@@ -112,3 +112,28 @@ export const DEFAULT_GOAL_SETTINGS: GoalSettings = {
   reminders: false,
   notifications: false,
 };
+
+export interface Campaign {
+  id: string;
+  name: string;
+  type: 'internal' | 'external';
+  url: string;
+  description: string;
+  status: 'active' | 'paused';
+  clicks: number;
+  revenue: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdvertisingWay {
+  id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  displayMethod: string;
+  targetLocation: string;
+  frequency: string;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -86,7 +86,7 @@ export async function diagnoseUserIsolation() {
     try {
       const noUserIdSnapshot = await getDocs(noUserIdQuery);
       console.log('Goals without userId:', noUserIdSnapshot.size);
-    } catch (error) {
+    } catch {
       console.log('Cannot query for null userId (expected)');
     }
     

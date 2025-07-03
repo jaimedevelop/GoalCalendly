@@ -1,11 +1,16 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import { LEVELS, DEFAULT_GOAL_SETTINGS } from '../types';
+import { AdvertisingDisplay } from './AdvertisingDisplay';
 
 export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const addGoal = useStore((state) => state.addGoal);
+  const { user } = useStore();
+
+  // Check if user is free tier (not admin and has free subscription)
+  const isFreeUser = user && user.subscriptionPlan === 'free' && user.email !== 'admin@admin.com';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +68,17 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
               placeholder="Add initial notes about your goal..."
             />
           </div>
+          
+          {/* Advertising Suggestion for Free Users */}
+          {isFreeUser && (
+            <div className="border-t pt-4">
+              <AdvertisingDisplay
+                displayMethod="suggestion"
+                targetLocation="new-goal-dialog"
+              />
+            </div>
+          )}
+          
           <div className="flex justify-end space-x-2">
             <button
               type="button"

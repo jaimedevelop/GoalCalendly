@@ -9,10 +9,14 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Goals - users can only access their own goals
+    // Goals - users can only access their own goals, admins can perform aggregation queries
     match /goals/{goalId} {
       allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
       allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      // Allow admin users to read for aggregation/counting purposes only
+      allow read: if request.auth != null &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     // Time blocks - users can only access their own time blocks
@@ -24,6 +28,18 @@ service cloud.firestore {
     // Shared goals - authenticated users can read/write shared goals
     match /sharedGoals/{shareId} {
       allow read, write: if request.auth != null;
+    }
+
+    // Campaigns - admin users can manage, all authenticated users can read (for displaying ads)
+    match /campaigns/{campaignId} {
+      allow read: if request.auth != null;
+      allow write, create, delete: if request.auth != null && request.auth.token.email == 'admin@admin.com';
+    }
+
+    // Advertising Ways - admin users can manage, all authenticated users can read (for displaying ads)
+    match /advertisingWays/{advertisingWayId} {
+      allow read: if request.auth != null;
+      allow write, create, delete: if request.auth != null && request.auth.token.email == 'admin@admin.com';
     }
 
     // Deny all other access

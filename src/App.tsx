@@ -11,6 +11,7 @@ import { Header } from './components/Header';
 import { Toaster } from './components/ui/toaster';
 import AdminDashboard from './components/AdminDashboard';
 import SubscriptionPlan from './components/SubscriptionPlan';
+import { AdvertisingManager } from './components/AdvertisingManager';
 import { useStore } from './store';
 import { onAuthStateChange, signOutUser } from './services/auth';
 
@@ -69,24 +70,26 @@ function App() {
           </Routes>
         ) : (
           // Authenticated routes
-          <div className="min-h-screen bg-gray-100">
-          <Header user={user} onSignOut={handleSignOut} />
-          
-          <Routes>
-            <Route path="/goals" element={<Goals />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/completed" element={<CompletedGoals />} />
-            <Route path="/help" element={<Help />} />
-            <Route
-              path="/subscription"
-              element={<SubscriptionPlan user={user} currentGoalCount={0} />}
-            />
-            {user.role === 'admin' && user.email === 'admin@admin.com' && (
-              <Route path="/admin" element={<AdminDashboard />} />
-            )}
-            <Route path="/" element={<Navigate to="/goals" replace />} />
-          </Routes>
-        </div>
+          <AdvertisingManager>
+            <div className="min-h-screen bg-gray-100">
+              <Header user={user} onSignOut={handleSignOut} />
+              
+              <Routes>
+                <Route path="/goals" element={<Goals />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/completed" element={<CompletedGoals />} />
+                <Route path="/help" element={<Help />} />
+                <Route
+                  path="/subscription"
+                  element={<SubscriptionPlan user={user} currentGoalCount={0} />}
+                />
+                {user.role === 'admin' && user.email === 'admin@admin.com' && (
+                  <Route path="/admin" element={<AdminDashboard />} />
+                )}
+                <Route path="/" element={<Navigate to="/goals" replace />} />
+              </Routes>
+            </div>
+          </AdvertisingManager>
         )}
       </Router>
       <Toaster />
