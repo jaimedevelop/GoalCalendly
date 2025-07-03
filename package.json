@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "init:firestore": "tsx src/scripts/initializeFirestore.ts",
     "test:firestore": "tsx src/scripts/testFirestore.ts",
-    "diagnose:firestore": "tsx src/scripts/diagnoseFirestore.ts"
+    "diagnose:firestore": "tsx src/scripts/diagnoseFirestore.ts",
+    "diagnose:isolation": "tsx src/scripts/diagnoseUserIsolation.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

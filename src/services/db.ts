@@ -36,21 +36,61 @@ export async function saveToFirestore(goals: Goal[]): Promise<boolean> {
     for (const goal of goals) {
       const goalDoc = doc(goalsCollection, goal.id);
       
-      const goalData = {
-        ...goal,
-        type: 'goal',
-        userId: currentUser.uid, // Add user ID for data scoping
-        updatedAt: serverTimestamp(),
-        // Convert date strings to Firestore timestamps if needed
+      console.log('[DEBUG] saveToFirestore: Saving goal', goal.id, 'with userId:', currentUser.uid);
+      // Create clean goal data without undefined values (Firestore doesn't allow undefined)
+      const goalData: Omit<Goal, 'note' | 'completed' | 'completedDate'> & {
+        type: string;
+        userId: string;
+        updatedAt: ReturnType<typeof serverTimestamp>;
+        note?: string;
+        completed?: boolean;
+        completedDate?: string;
+      } = {
+        // Required fields
+        id: goal.id,
+        name: goal.name,
+        targetHours: goal.targetHours,
+        currentLevel: goal.currentLevel,
         startDate: goal.startDate,
-        // Only include fields that are not undefined (Firestore doesn't allow undefined)
-        ...(goal.completedDate !== undefined && { completedDate: goal.completedDate }),
-        ...(goal.note !== undefined && { note: goal.note }),
-        // Ensure arrays are properly formatted
+        totalTimeSpent: goal.totalTimeSpent,
+        weeklyTimeSpent: goal.weeklyTimeSpent,
+        weeklyGoal: goal.weeklyGoal,
+        trophies: goal.trophies,
+        settings: goal.settings,
+        
+        // System fields
+        type: 'goal',
+        userId: currentUser.uid,
+        updatedAt: serverTimestamp(),
+        
+        // Arrays (ensure they're never undefined)
         medals: goal.medals || [],
         practiceDays: goal.practiceDays || [],
-        weeklyTrophies: goal.weeklyTrophies || []
+        weeklyTrophies: goal.weeklyTrophies || [],
       };
+      
+      // Only include optional fields if they are defined
+      if (goal.completed !== undefined) {
+        goalData.completed = goal.completed;
+      }
+      if (goal.completedDate !== undefined) {
+        goalData.completedDate = goal.completedDate;
+      }
+      if (goal.note !== undefined) {
+        goalData.note = goal.note;
+      }
+      
+      // Debug logging to validate undefined value filtering
+      console.log('🔍 [DEBUG] Saving goal data to Firestore:', {
+        goalId: goal.id,
+        hasUndefinedValues: Object.values(goalData).some(value => value === undefined),
+        optionalFields: {
+          completed: goal.completed,
+          completedDate: goal.completedDate,
+          note: goal.note
+        },
+        filteredData: goalData
+      });
       
       await setDoc(goalDoc, goalData, { merge: true });
     }
@@ -73,6 +113,7 @@ export async function loadFromFirestore(): Promise<Goal[]> {
     }
 
     const goalsCollection = collection(db, GOALS_COLLECTION);
+    console.log('[DEBUG] loadFromFirestore: Current user UID =', currentUser.uid);
     const goalsQuery = query(
       goalsCollection,
       where('type', '==', 'goal'),
@@ -80,11 +121,14 @@ export async function loadFromFirestore(): Promise<Goal[]> {
       orderBy('updatedAt', 'desc')
     );
     
+    console.log('[DEBUG] loadFromFirestore: Executing query with userId filter =', currentUser.uid);
     const querySnapshot = await getDocs(goalsQuery);
     const goals: Goal[] = [];
+    console.log('[DEBUG] loadFromFirestore: Query returned', querySnapshot.size, 'documents');
     
     querySnapshot.forEach((doc) => {
       const data = doc.data();
+      console.log('[DEBUG] loadFromFirestore: Processing goal - ID:', data.id, 'Name:', data.name, 'UserId:', data.userId, 'Expected UserId:', currentUser.uid, 'Match:', data.userId === currentUser.uid);
       
       // Convert Firestore data back to Goal format
       const goal: Goal = {
@@ -154,11 +198,26 @@ export async function getGoalFromFirestore(goalId: string): Promise<Goal | null>
 // Delete a goal from Firestore
 export async function deleteGoalFromFirestore(goalId: string): Promise<boolean> {
   try {
+    console.log('🗑️ [DEBUG] Starting Firestore goal deletion:', { goalId });
+    
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      console.error('🗑️ [DEBUG] Delete failed: User not authenticated');
+      return false;
+    }
+    
+    console.log('🗑️ [DEBUG] User authenticated, proceeding with deletion:', {
+      userId: currentUser.uid,
+      goalId
+    });
+    
     const goalDoc = doc(db, GOALS_COLLECTION, goalId);
     await deleteDoc(goalDoc);
+    
+    console.log('🗑️ [DEBUG] Goal successfully deleted from Firestore:', { goalId });
     return true;
   } catch (error) {
-    console.error('Error deleting goal from Firestore:', error);
+    console.error('🗑️ [DEBUG] Error deleting goal from Firestore:', { goalId, error });
     return false;
   }
 }
@@ -166,19 +225,30 @@ export async function deleteGoalFromFirestore(goalId: string): Promise<boolean> 
 // Get completed goals from Firestore
 export async function getCompletedGoalsFromFirestore(): Promise<Goal[]> {
   try {
+    console.log('[DEBUG] getCompletedGoalsFromFirestore: Starting load operation');
+    const currentUser = await getCurrentUser();
+    console.log('[DEBUG] getCompletedGoalsFromFirestore: currentUser =', currentUser ? 'authenticated' : 'null');
+    if (!currentUser) {
+      console.error('User not authenticated');
+      return [];
+    }
+
     const goalsCollection = collection(db, GOALS_COLLECTION);
     const completedGoalsQuery = query(
       goalsCollection,
       where('type', '==', 'goal'),
+      where('userId', '==', currentUser.uid), // Add missing userId filter
       where('completed', '==', true),
       orderBy('completedDate', 'desc')
     );
     
+    console.log('[DEBUG] getCompletedGoalsFromFirestore: Executing query WITHOUT userId filter');
     const querySnapshot = await getDocs(completedGoalsQuery);
     const goals: Goal[] = [];
     
     querySnapshot.forEach((doc) => {
       const data = doc.data();
+      console.log('[DEBUG] getCompletedGoalsFromFirestore: Found goal with userId:', data.userId, 'current user:', currentUser.uid);
       goals.push({
         id: data.id,
         name: data.name,

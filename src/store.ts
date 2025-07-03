@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { Goal, Timer, GoalSettings, DEFAULT_GOAL_SETTINGS, LEVELS, WeeklyTrophy } from './types';
 import { format, getWeek } from 'date-fns';
 import { AuthUser } from './services/auth.js';
-import { saveToFirestore } from './services/db';
+import { saveToFirestore, deleteGoalFromFirestore } from './services/db';
 
 interface Store {
   goals: Goal[];
@@ -20,6 +20,7 @@ interface Store {
   updateDefaultSettings: (settings: Partial<GoalSettings>) => void;
   setUser: (user: AuthUser | null) => void;
   setAuthLoading: (loading: boolean) => void;
+  clearUserData: () => void;
   canAddGoal: () => boolean;
   getGoalLimit: () => number;
 }
@@ -132,8 +133,25 @@ export const useStore = create<Store>((set) => ({
       
       return { goals: newGoals };
     }),
-  deleteGoal: (goalId) =>
+  deleteGoal: async (goalId) => {
+    console.log('🗑️ [DEBUG] Store deleteGoal called:', { goalId });
+    
+    // First delete from Firestore
+    const firestoreSuccess = await deleteGoalFromFirestore(goalId);
+    console.log('🗑️ [DEBUG] Firestore deletion result:', { goalId, success: firestoreSuccess });
+    
+    if (!firestoreSuccess) {
+      console.error('🗑️ [DEBUG] Failed to delete from Firestore, aborting local deletion');
+      return;
+    }
+    
+    // Then update local state
     set((state) => {
+      console.log('🗑️ [DEBUG] Updating local state - before:', {
+        goalCount: state.goals.length,
+        goalExists: state.goals.some(g => g.id === goalId)
+      });
+      
       const newGoals = state.goals.filter((goal) => goal.id !== goalId);
       const newActiveTimer = state.activeTimer.goalId === goalId ? {
         goalId: null,
@@ -142,14 +160,30 @@ export const useStore = create<Store>((set) => ({
         elapsedTime: 0,
       } : state.activeTimer;
       
-      // Auto-save to Firestore
-      autoSaveToFirestore(newGoals);
+      console.log('🗑️ [DEBUG] Updating local state - after:', {
+        goalCount: newGoals.length,
+        timerReset: state.activeTimer.goalId === goalId
+      });
+      
+      // Remove from localStorage if it exists
+      try {
+        const localGoals = localStorage.getItem('goals');
+        if (localGoals) {
+          const parsedGoals = JSON.parse(localGoals);
+          const filteredLocalGoals = parsedGoals.filter((goal: Goal) => goal.id !== goalId);
+          localStorage.setItem('goals', JSON.stringify(filteredLocalGoals));
+          console.log('🗑️ [DEBUG] Removed goal from localStorage:', { goalId });
+        }
+      } catch (error) {
+        console.warn('🗑️ [DEBUG] Error updating localStorage:', error);
+      }
       
       return {
         goals: newGoals,
         activeTimer: newActiveTimer,
       };
-    }),
+    });
+  },
   startTimer: (goalId) =>
     set({
       activeTimer: {
@@ -232,6 +266,7 @@ export const useStore = create<Store>((set) => ({
       },
     }),
   setGoals: (goals) => {
+    console.log('📥 [DEBUG] setGoals called with', goals.length, 'goals');
     const processedGoals = goals.map(goal => {
       const { trophies, weeklyTrophies } = checkAndUpdateTrophies(goal);
       return {
@@ -240,6 +275,25 @@ export const useStore = create<Store>((set) => ({
         weeklyTrophies: weeklyTrophies || []
       };
     });
+    
+    console.log('📥 [DEBUG] setGoals processed', processedGoals.length, 'goals');
+    
+    // Only auto-save if we're setting goals from user actions, not from initial load
+    // We can detect this by checking if the goals have been modified (trophy updates)
+    const hasModifications = processedGoals.some((goal, index) =>
+      goals[index] && (
+        goal.trophies !== goals[index].trophies ||
+        goal.weeklyTrophies.length !== (goals[index].weeklyTrophies?.length || 0)
+      )
+    );
+    
+    if (hasModifications) {
+      console.log('📥 [DEBUG] setGoals detected trophy updates, auto-saving to Firestore');
+      autoSaveToFirestore(processedGoals);
+    } else {
+      console.log('📥 [DEBUG] setGoals no modifications detected, skipping auto-save');
+    }
+    
     set({ goals: processedGoals });
   },
   updateDefaultSettings: (settings) =>
@@ -250,6 +304,42 @@ export const useStore = create<Store>((set) => ({
     }),
   setUser: (user) => set({ user }),
   setAuthLoading: (isAuthLoading) => set({ isAuthLoading }),
+  clearUserData: () => {
+    console.log('🧹 [DEBUG] Clearing all user data from store and localStorage');
+    
+    // Clear localStorage
+    try {
+      localStorage.removeItem('goals');
+      localStorage.removeItem('goal-calendly-data');
+      localStorage.removeItem('default-settings');
+      
+      // Clear any goal-specific settings
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('goal-') && key.endsWith('-settings')) {
+          localStorage.removeItem(key);
+        }
+      });
+      
+      console.log('🧹 [DEBUG] localStorage cleared successfully');
+    } catch (error) {
+      console.warn('🧹 [DEBUG] Error clearing localStorage:', error);
+    }
+    
+    // Reset store to initial state
+    set({
+      goals: [],
+      activeTimer: {
+        goalId: null,
+        isRunning: false,
+        startTime: null,
+        elapsedTime: 0,
+      },
+      defaultSettings: DEFAULT_GOAL_SETTINGS,
+      // Keep user and isAuthLoading as they are managed by auth flow
+    });
+    
+    console.log('🧹 [DEBUG] Store state reset to initial values');
+  },
   canAddGoal: () => {
     return true; // Will be implemented in component level
   },

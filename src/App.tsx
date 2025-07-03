@@ -15,18 +15,25 @@ import { useStore } from './store';
 import { onAuthStateChange, signOutUser } from './services/auth';
 
 function App() {
-  const { user, isAuthLoading, setUser, setAuthLoading } = useStore();
+  const { user, isAuthLoading, setUser, setAuthLoading, clearUserData } = useStore();
 
   useEffect(() => {
     // Listen for auth state changes
     const unsubscribe = onAuthStateChange((user) => {
       console.log('[DEBUG] Auth state change:', user ? 'authenticated' : 'unauthenticated');
+      
+      // Clear user data when logging out (user becomes null)
+      if (!user) {
+        console.log('[DEBUG] User logged out, clearing user data');
+        clearUserData();
+      }
+      
       setUser(user);
       setAuthLoading(false);
     });
 
     return () => unsubscribe();
-  }, [setUser, setAuthLoading]);
+  }, [setUser, setAuthLoading, clearUserData]);
 
   const handleSignOut = async () => {
     try {
