@@ -28,18 +28,62 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Register service worker
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
+      // PWA Installation Diagnostics
+      console.log('\=\=\= PWA INSTALLATION DIAGNOSTICS \=\=\=');
+      
+      // Check manifest
+      fetch('/manifest.json')
+        .then(response => response.json())
+        .then(manifest => {
+          console.log('✓ Manifest loaded:', manifest);
+          
+          // Check if icons exist
+          manifest.icons.forEach(icon => {
+            fetch(icon.src)
+              .then(response => {
+                if (response.ok) {
+                  console.log(`✓ Icon found: ${icon.src}`);
+                } else {
+                  console.error(`✗ Icon missing: ${icon.src} (Status: ${response.status})`);
+                }
+              })
+              .catch(err => console.error(`✗ Icon fetch failed: ${icon.src}`, err));
+          });
+        })
+        .catch(err => console.error('✗ Manifest fetch failed:', err));
+
+      // Check PWA installation criteria
+      window.addEventListener('load', () => {
+        console.log('\=\=\= PWA INSTALLATION CRITERIA CHECK \=\=\=');
+        console.log('HTTPS:', location.protocol === 'https:' || location.hostname === 'localhost');
+        console.log('Service Worker Support:', 'serviceWorker' in navigator);
+        console.log('Manifest Link:', document.querySelector('link[rel="manifest"]') ? '✓' : '✗');
+        console.log('Display Mode:', window.matchMedia('(display-mode: standalone)').matches ? 'Standalone' : 'Browser');
+        
+        // Register service worker
+        if ('serviceWorker' in navigator) {
           navigator.serviceWorker.register('/sw.js')
             .then((registration) => {
-              console.log('SW registered: ', registration);
+              console.log('✓ SW registered: ', registration);
             })
             .catch((registrationError) => {
-              console.log('SW registration failed: ', registrationError);
+              console.error('✗ SW registration failed: ', registrationError);
             });
+        }
+
+        // Listen for beforeinstallprompt event
+        window.addEventListener('beforeinstallprompt', (e) => {
+          console.log('✓ beforeinstallprompt event fired - PWA is installable!');
+          console.log('Install prompt event:', e);
         });
-      }
+
+        // Check if already installed
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+          console.log('✓ App is running in standalone mode (already installed)');
+        } else {
+          console.log('ℹ App is running in browser mode');
+        }
+      });
     </script>
   </body>
 </html>
