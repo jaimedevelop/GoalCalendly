@@ -12,6 +12,7 @@ import { Toaster } from './components/ui/toaster';
 import AdminDashboard from './components/AdminDashboard';
 import SubscriptionPlan from './components/SubscriptionPlan';
 import { AdvertisingManager } from './components/AdvertisingManager';
+import PWAInstallPrompt from './components/PWAInstallPrompt.tsx';
 import { useStore } from './store';
 import { onAuthStateChange, signOutUser } from './services/auth';
 
@@ -93,6 +94,7 @@ function App() {
         )}
       </Router>
       <Toaster />
+      <PWAInstallPrompt />
     </>
   );
 }
