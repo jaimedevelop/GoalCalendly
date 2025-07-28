@@ -131,4 +131,104 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// Timer notification handling
+let timerNotification = null;
+
+self.addEventListener('message', (event) => {
+  const { type, payload } = event.data;
+
+  switch (type) {
+    case 'SHOW_TIMER_NOTIFICATION':
+      showTimerNotification(payload);
+      break;
+    case 'UPDATE_TIMER_NOTIFICATION':
+      updateTimerNotification(payload);
+      break;
+    case 'CLEAR_TIMER_NOTIFICATION':
+      clearTimerNotification();
+      break;
+  }
+});
+
+function showTimerNotification(options) {
+  if (self.registration && self.registration.showNotification) {
+    self.registration.showNotification(options.title, {
+      body: options.body,
+      tag: options.tag || 'timer-notification',
+      requireInteraction: options.requireInteraction || true,
+      silent: options.silent || true,
+      icon: '/icon-192x192.svg',
+      badge: '/icon-192x192.svg',
+      ongoing: true,
+      actions: [
+        {
+          action: 'stop',
+          title: 'Stop Timer',
+          icon: '/icon-192x192.svg'
+        }
+      ]
+    });
+  }
+}
+
+function updateTimerNotification(options) {
+  if (self.registration && self.registration.showNotification) {
+    self.registration.getNotifications({ tag: 'timer-notification' })
+      .then(notifications => {
+        if (notifications.length > 0) {
+          notifications[0].close();
+        }
+        return self.registration.showNotification(options.title, {
+          body: options.body,
+          tag: 'timer-notification',
+          requireInteraction: true,
+          silent: true,
+          icon: '/icon-192x192.svg',
+          badge: '/icon-192x192.svg',
+          ongoing: true,
+          actions: [
+            {
+              action: 'stop',
+              title: 'Stop Timer',
+              icon: '/icon-192x192.svg'
+            }
+          ]
+        });
+      });
+  }
+}
+
+function clearTimerNotification() {
+  if (self.registration) {
+    self.registration.getNotifications({ tag: 'timer-notification' })
+      .then(notifications => {
+        notifications.forEach(notification => notification.close());
+      });
+  }
+}
+
+// Handle notification click events
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  
+  if (event.action === 'stop') {
+    // Send message to app to stop timer
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        client.postMessage({ type: 'STOP_TIMER' });
+      });
+    });
+  } else {
+    // Focus the app
+    event.waitUntil(
+      self.clients.matchAll().then(clients => {
+        if (clients.length > 0) {
+          return clients[0].focus();
+        }
+        return self.clients.openWindow('/');
+      })
+    );
+  }
+});
+
 console.log('Service Worker: Script loaded successfully');
