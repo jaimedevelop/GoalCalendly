@@ -1,7 +1,6 @@
 // Notification service for timer status bar integration
 export class TimerNotificationService {
   private static instance: TimerNotificationService;
-  private notificationId: string | null = null;
   private updateInterval: number | null = null;
   private isSupported: boolean;
 
@@ -55,14 +54,13 @@ export class TimerNotificationService {
         });
       } else {
         // Fallback to regular notification
-        new Notification(goalName, {
-          body: timeString,
+        new Notification(`⏱️ ${goalName}`, {
+          body: `Timer: ${timeString}`,
           tag: 'timer-notification',
           requireInteraction: true,
           silent: true,
           icon: '/icon-192x192.svg'
         });
-        this.notificationId = 'timer-notification';
       }
 
       // Start updating the notification
@@ -83,8 +81,6 @@ export class TimerNotificationService {
         type: 'CLEAR_TIMER_NOTIFICATION'
       });
     }
-
-    this.notificationId = null;
   }
 
   private startNotificationUpdates(goalName: string, startTime: number): void {
@@ -95,6 +91,8 @@ export class TimerNotificationService {
     this.updateInterval = window.setInterval(() => {
       const elapsed = Date.now() - startTime;
       const timeString = this.formatTime(elapsed);
+      
+      console.log('Notification: Updating with', { goalName, timeString });
       
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({

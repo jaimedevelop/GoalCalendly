@@ -151,9 +151,13 @@ self.addEventListener('message', (event) => {
 });
 
 function showTimerNotification(options) {
+  console.log('SW: Showing timer notification', options);
   if (self.registration && self.registration.showNotification) {
-    self.registration.showNotification(options.title, {
-      body: options.body,
+    const notificationTitle = `⏱️ ${options.title}`;
+    const notificationBody = `Timer: ${options.body}`;
+    
+    self.registration.showNotification(notificationTitle, {
+      body: notificationBody,
       tag: options.tag || 'timer-notification',
       requireInteraction: options.requireInteraction || true,
       silent: options.silent || true,
@@ -163,23 +167,32 @@ function showTimerNotification(options) {
       actions: [
         {
           action: 'stop',
-          title: 'Stop Timer',
+          title: '⏹️ Stop',
           icon: '/icon-192x192.svg'
         }
       ]
+    }).then(() => {
+      console.log('SW: Timer notification shown successfully');
+    }).catch(err => {
+      console.error('SW: Error showing notification:', err);
     });
   }
 }
 
 function updateTimerNotification(options) {
+  console.log('SW: Updating timer notification', options);
   if (self.registration && self.registration.showNotification) {
     self.registration.getNotifications({ tag: 'timer-notification' })
       .then(notifications => {
         if (notifications.length > 0) {
           notifications[0].close();
         }
-        return self.registration.showNotification(options.title, {
-          body: options.body,
+        
+        const notificationTitle = `⏱️ ${options.title}`;
+        const notificationBody = `Timer: ${options.body}`;
+        
+        return self.registration.showNotification(notificationTitle, {
+          body: notificationBody,
           tag: 'timer-notification',
           requireInteraction: true,
           silent: true,
@@ -189,11 +202,15 @@ function updateTimerNotification(options) {
           actions: [
             {
               action: 'stop',
-              title: 'Stop Timer',
+              title: '⏹️ Stop',
               icon: '/icon-192x192.svg'
             }
           ]
+        }).then(() => {
+          console.log('SW: Timer notification updated successfully');
         });
+      }).catch(err => {
+        console.error('SW: Error updating notification:', err);
       });
   }
 }
