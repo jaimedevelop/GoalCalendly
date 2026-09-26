@@ -1,7 +1,6 @@
 // Goal Calendly Service Worker
-const CACHE_NAME = 'goal-calendly-v1';
-const STATIC_CACHE_NAME = 'goal-calendly-static-v1';
-const DYNAMIC_CACHE_NAME = 'goal-calendly-dynamic-v1';
+const STATIC_CACHE_NAME = 'goal-calendly-static-v2';
+const DYNAMIC_CACHE_NAME = 'goal-calendly-dynamic-v2';
 
 // Files to cache immediately for offline functionality
 const STATIC_FILES = [
@@ -60,6 +59,34 @@ self.addEventListener('fetch', (event) => {
 
   // Skip non-GET requests
   if (request.method !== 'GET') {
+    return;
+  }
+
+  // Development modules must always come from Vite, including after a reload.
+  if (url.origin === location.origin && (
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/')
+  )) {
+    return;
+  }
+
+  // Fetch the current app shell online; use the saved shell only when offline.
+  // Cache-first HTML could keep referencing an old bundle indefinitely.
+  if (url.origin === location.origin && request.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        if (response.ok) {
+          const cache = await caches.open(DYNAMIC_CACHE_NAME);
+          await cache.put(request, response.clone());
+        }
+        return response;
+      } catch {
+        return await caches.match(request) || await caches.match('/index.html') ||
+          new Response('Offline - Content not available', { status: 503 });
+      }
+    })());
     return;
   }
 
