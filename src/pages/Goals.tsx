@@ -17,10 +17,24 @@ export function Goals() {
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [importedGoals, setImportedGoals] = useState<Goal[] | null>(null);
   const [viewType, setViewType] = useState<ViewType>('top');
-  const { goals, setGoals, defaultSettings, user } = useStore();
-  const activeGoals = goals.filter(g => !g.completed);
+  const { goals, setGoals, defaultSettings, user, activeTimer } = useStore();
+  const activeGoals = goals
+    .filter(g => !g.completed)
+    .sort((a, b) => {
+      if (!activeTimer.isRunning || !activeTimer.goalId) return 0;
+      if (a.id === activeTimer.goalId) return -1;
+      if (b.id === activeTimer.goalId) return 1;
+      return 0;
+    });
   const importFileRef = useRef<HTMLInputElement>(null);
+  const activeGoalRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (activeTimer.isRunning && activeTimer.goalId) {
+      activeGoalRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [activeTimer.isRunning, activeTimer.goalId]);
 
   // Check subscription limits
   const currentPlan = user ? SUBSCRIPTION_PLANS[user.subscriptionPlan] : null;
@@ -338,7 +352,12 @@ export function Goals() {
 
       <div className={getLayoutClassName()}>
         {activeGoals.map((goal) => (
-          <GoalCard key={goal.id} goal={goal} viewType={viewType} />
+          <div
+            key={goal.id}
+            ref={goal.id === activeTimer.goalId && activeTimer.isRunning ? activeGoalRef : undefined}
+          >
+            <GoalCard goal={goal} viewType={viewType} />
+          </div>
         ))}
       </div>
 
