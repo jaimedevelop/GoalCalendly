@@ -16,7 +16,7 @@ export function Header({ user, onSignOut }: HeaderProps) {
         <div className="flex justify-between items-center h-16">
           <h1 className="text-xl font-semibold text-gray-900">Goal Calendly</h1>
           <div className="flex items-center space-x-4">
-            {user.role === 'admin' && user.email === 'admin@admin.com' && (
+            {user.isTrustedAdmin && (
               <div className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
                 <Crown className="w-3 h-3" />
                 Admin

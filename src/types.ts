@@ -1,6 +1,9 @@
+import { SUBSCRIPTION_PLANS as SHARED_SUBSCRIPTION_PLANS, type SubscriptionPlanId } from '../shared/subscriptionPlans.js';
+
 export type UserRole = 'user' | 'admin';
 
-export type SubscriptionPlan = 'free' | 'pro' | 'platinum' | 'enterprise';
+/** @deprecated Use SubscriptionPlanId from shared/subscriptionPlans.ts. Kept as an alias during migration. */
+export type SubscriptionPlan = SubscriptionPlanId;
 
 export interface SubscriptionLimits {
   maxGoals: number;
@@ -8,28 +11,23 @@ export interface SubscriptionLimits {
   price: number; // Monthly price in USD
 }
 
-export const SUBSCRIPTION_PLANS: Record<SubscriptionPlan, SubscriptionLimits> = {
-  free: {
-    maxGoals: 3,
-    features: ['Basic goal tracking', 'Timer functionality', 'Progress tracking'],
-    price: 0
-  },
-  pro: {
-    maxGoals: 15,
-    features: ['All Free features', 'Advanced analytics', 'Goal sharing', 'Custom reminders'],
-    price: 3.50
-  },
-  platinum: {
-    maxGoals: 30,
-    features: ['All Pro features', 'Priority support', 'Advanced reporting', 'Team collaboration'],
-    price: 9.50
-  },
-  enterprise: {
-    maxGoals: -1, // unlimited
-    features: ['All Platinum features', 'Custom integrations', 'Dedicated support', 'SLA guarantee'],
-    price: -1 // Contact for pricing
-  }
-};
+/**
+ * @deprecated Derived from the shared catalog for backward compatibility with
+ * existing UI code during migration. New code should read
+ * shared/subscriptionPlans.ts directly, or better, the user's server-owned
+ * entitlement (see EffectiveEntitlement below) rather than their raw
+ * subscriptionPlan field.
+ */
+export const SUBSCRIPTION_PLANS: Record<SubscriptionPlan, SubscriptionLimits> = Object.fromEntries(
+  Object.values(SHARED_SUBSCRIPTION_PLANS).map((plan) => [
+    plan.id,
+    {
+      maxGoals: plan.maxActiveGoals,
+      features: plan.features,
+      price: plan.monthlyPrice ?? -1,
+    },
+  ])
+) as Record<SubscriptionPlan, SubscriptionLimits>;
 
 export interface UserProfile {
   uid: string;
@@ -40,6 +38,98 @@ export interface UserProfile {
   createdAt: string;
   lastLoginAt: string;
   isActive: boolean;
+}
+
+// --- Entitlement, billing, usage, and audit types (admin_subscriptions.md section 5/6) ---
+// These describe server-owned records. The client only ever reads them;
+// writes happen exclusively through backend functions (functions/src/billing,
+// functions/src/admin). See firestore.rules for the matching read/write guards.
+
+/** Where a user's current effective access is coming from. */
+export type EntitlementSource = 'free' | 'stripe' | 'complimentary' | 'admin';
+
+/**
+ * entitlements/{uid} — server-owned effective plan, computed by the backend
+ * from billing state, complimentary grants, and admin claims. Never
+ * client-writable. See functions/src/lib/entitlements.ts once implemented.
+ */
+export interface Entitlement {
+  uid: string;
+  plan: SubscriptionPlanId;
+  source: EntitlementSource;
+  maxActiveGoals: number;
+  hasAdvertising: boolean;
+  /** ISO timestamp. Present for complimentary grants and grace periods; absent for indefinite access. */
+  expiresAt?: string;
+  updatedAt: string;
+}
+
+export type BillingStatus =
+  | 'none'
+  | 'active'
+  | 'trialing'
+  | 'past_due'
+  | 'grace_period'
+  | 'incomplete'
+  | 'incomplete_expired'
+  | 'unpaid'
+  | 'paused'
+  | 'canceled';
+
+/**
+ * billingCustomers/{uid} — server-owned Stripe customer/subscription
+ * mapping. The owner may read a summary view of this (see BillingSummary);
+ * only the backend ever writes it.
+ */
+export interface BillingCustomer {
+  uid: string;
+  stripeCustomerId: string;
+  stripeSubscriptionId?: string;
+  priceId?: string;
+  status: BillingStatus;
+  /** ISO timestamp: access is paid-through this date even if status has since changed. */
+  paidThroughDate?: string;
+  cancelAtPeriodEnd: boolean;
+  lastSyncedAt: string;
+}
+
+/** Owner-readable projection of BillingCustomer with no internal Stripe IDs. */
+export interface BillingSummary {
+  status: BillingStatus;
+  paidThroughDate?: string;
+  cancelAtPeriodEnd: boolean;
+  plan: SubscriptionPlanId | null;
+  interval: 'month' | 'year' | null;
+}
+
+/**
+ * usage/{uid} — server-maintained active-goal counter, updated atomically
+ * with goal mutations (see functions/src/goals/mutateGoals.ts, step 4).
+ */
+export interface UsageRecord {
+  uid: string;
+  activeGoalCount: number;
+  updatedAt: string;
+}
+
+/** stripeEvents/{eventId} — backend-only webhook processing/dedup records. */
+export interface StripeEventRecord {
+  eventId: string;
+  type: string;
+  processedAt: string;
+  status: 'processed' | 'failed' | 'retrying';
+}
+
+/** adminAuditLogs/{id} — backend-only append log of privileged admin actions. */
+export interface AdminAuditLogEntry {
+  id: string;
+  actorUid: string;
+  targetUid: string;
+  action: string;
+  reason: string;
+  before?: unknown;
+  after?: unknown;
+  createdAt: string;
 }
 
 export interface Goal {

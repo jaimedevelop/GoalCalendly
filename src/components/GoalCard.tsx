@@ -6,6 +6,7 @@ import { formatDistanceToNow, format, getWeek } from 'date-fns';
 import { Calendar } from './Calendar';
 import { SettingsDialog } from './SettingsDialog';
 import { useToast } from '../hooks/useToast';
+import { reopenGoal } from '../services/goals.js';
 
 interface GoalCardProps {
   goal: Goal;
@@ -13,7 +14,7 @@ interface GoalCardProps {
 }
 
 export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
-  const { startTimer, activeTimer, updateGoal, deleteGoal } = useStore();
+  const { startTimer, activeTimer, updateGoal, deleteGoal, completeGoalById, setGoals, goals } = useStore();
   const [showSettings, setShowSettings] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(goal.name);
@@ -25,18 +26,38 @@ export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
     updateGoal(goal.id, { note: e.target.value });
   };
 
-  const handleCompletedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCompletedChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const isCompleted = e.target.checked;
-    updateGoal(goal.id, {
-      completed: isCompleted,
-      completedDate: isCompleted ? new Date().toISOString() : undefined
-    });
+
     if (isCompleted) {
+      const ok = await completeGoalById(goal.id);
+      if (ok) {
+        toast({
+          title: "Goal Completed!",
+          description: `Congratulations on completing "${goal.name}"! You can find it in the Completed Goals section.`,
+          variant: "success",
+          duration: 5000
+        });
+      } else {
+        toast({
+          title: "Could not complete goal",
+          description: useStore.getState().lastGoalError ?? 'Please try again.',
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    // Un-checking reopens the goal, which counts against the active-goal
+    // limit server-side, so it goes through reopenGoal rather than a plain update.
+    const result = await reopenGoal(goal.id);
+    if (result.ok) {
+      setGoals(goals.map((g) => (g.id === goal.id ? { ...g, completed: false, completedDate: undefined } : g)));
+    } else {
       toast({
-        title: "Goal Completed!",
-        description: `Congratulations on completing "${goal.name}"! You can find it in the Completed Goals section.`,
-        variant: "success",
-        duration: 5000
+        title: "Could not reopen goal",
+        description: result.error?.message ?? 'You may be at your active goal limit.',
+        variant: "destructive",
       });
     }
   };

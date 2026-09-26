@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Download, Upload, Share2, Settings, CheckSquare, Layout, Save, Crown } from 'lucide-react';
+import { Plus, Download, Upload, Share2, Settings, CheckSquare, Layout, Crown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { GoalCard } from '../components/GoalCard';
@@ -7,7 +7,8 @@ import { ActiveTimer } from '../components/ActiveTimer';
 import { NewGoalDialog } from '../components/NewGoalDialog';
 import { ShareDialog } from '../components/ShareDialog';
 import { ImportTimeDialog } from '../components/ImportTimeDialog';
-import { getSharedGoals, saveToFirestore, loadFromFirestore } from '../services/db';
+import { getSharedGoals } from '../services/db';
+import { importGoals } from '../services/goals.js';
 import { Goal, SUBSCRIPTION_PLANS } from '../types';
 
 type ViewType = 'top' | 'double' | 'all';
@@ -16,6 +17,7 @@ export function Goals() {
   const [showNewGoal, setShowNewGoal] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [importedGoals, setImportedGoals] = useState<Goal[] | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [viewType, setViewType] = useState<ViewType>('top');
   const { goals, setGoals, defaultSettings, user, activeTimer } = useStore();
   const activeGoals = goals
@@ -44,51 +46,14 @@ export function Goals() {
   // Check subscription limits
   const currentPlan = user ? SUBSCRIPTION_PLANS[user.subscriptionPlan] : null;
   // Admin users have unlimited goals
-  const isAdmin = user?.email === 'admin@admin.com';
+  const isAdmin = user?.isTrustedAdmin ?? false;
   const canAddGoal = isAdmin || (currentPlan ? (currentPlan.maxGoals === -1 || activeGoals.length < currentPlan.maxGoals) : false);
   const isAtLimit = !isAdmin && currentPlan ? (currentPlan.maxGoals !== -1 && activeGoals.length >= currentPlan.maxGoals) : false;
 
-  // Load goals from Firestore (user-specific) - only on initial load
+  // Goals are loaded once app-wide on sign-in (see App.tsx) so every route
+  // sees an accurate active-goal count; this effect only handles the
+  // share-link download flow.
   useEffect(() => {
-    const loadGoals = async () => {
-      try {
-        // Only load from Firestore if store is empty (initial load)
-        if (goals.length === 0) {
-          console.log('[DEBUG] Goals page: Store is empty, loading from Firestore');
-          
-          // Clear any old localStorage data to prevent conflicts with new user data
-          localStorage.removeItem('goal-calendly-data');
-          localStorage.removeItem('default-settings');
-          // Clear any goal-specific settings that might exist
-          Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('goal-') && key.endsWith('-settings')) {
-              localStorage.removeItem(key);
-            }
-          });
-          
-          // Load user-specific goals from Firestore
-          const firestoreGoals = await loadFromFirestore();
-          
-          if (firestoreGoals) {
-            console.log('[DEBUG] Goals loaded from Firestore:', firestoreGoals.length);
-            setGoals(firestoreGoals);
-          } else {
-            // No goals found for this user - start with empty array
-            console.log('[DEBUG] No goals found for user, starting with empty state');
-            setGoals([]);
-          }
-        } else {
-          console.log('[DEBUG] Goals page: Store has', goals.length, 'goals, skipping Firestore load');
-        }
-      } catch (error) {
-        console.error('Error loading goals:', error);
-        // On error, start with empty array for new users
-        setGoals([]);
-      }
-    };
-    
-    loadGoals();
-    
     // Handle share URL parameter
     const urlParams = new URLSearchParams(window.location.search);
     const shareId = urlParams.get('share');
@@ -113,7 +78,7 @@ export function Goals() {
         }
       });
     }
-  }, [goals.length, setGoals]);
+  }, []);
 
   const handleExport = () => {
     const exportData = {
@@ -134,30 +99,6 @@ export function Goals() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  };
-
-  const handleSave = async () => {
-    try {
-      // Save to localStorage for backward compatibility
-      const exportData = {
-        goals,
-        exportDate: new Date().toISOString(),
-        version: '1.0'
-      };
-      localStorage.setItem('goal-calendly-data', JSON.stringify(exportData));
-      
-      // Save to Firestore
-      const success = await saveToFirestore(goals);
-      
-      if (success) {
-        alert('Goals successfully saved to Firestore!');
-      } else {
-        alert('Failed to save to Firestore. Check console for details.');
-      }
-    } catch (error) {
-      console.error('Error saving goals:', error);
-      alert('An error occurred while saving goals. Check console for details.');
-    }
   };
 
   const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -195,9 +136,18 @@ export function Goals() {
     }
   };
 
-  const handleImportConfirm = (finalGoals: Goal[]) => {
-    setGoals(finalGoals);
-    setImportedGoals(null);
+  const handleImportConfirm = async (finalGoals: Goal[]) => {
+    setImportError(null);
+    // The server validates the whole batch against the active-goal limit
+    // atomically; an import that would exceed it is rejected outright rather
+    // than silently dropping goals or letting the client's count decide.
+    const result = await importGoals(finalGoals);
+    if (result.ok) {
+      setGoals([...goals, ...finalGoals]);
+      setImportedGoals(null);
+    } else {
+      setImportError(result.error?.message ?? 'Could not import these goals. You may be at your active goal limit.');
+    }
   };
 
   const getLayoutClassName = () => {
@@ -277,15 +227,6 @@ export function Goals() {
             <span>Export</span>
           </button>
           <button
-            onClick={handleSave}
-            className="flex items-center justify-center space-x-2 px-4 py-2 rounded-md hover:opacity-80"
-            style={{ backgroundColor: '#ffd433' }}
-            title="Save Goals to Firestore"
-          >
-            <Save className="w-5 h-5" />
-            <span>Save</span>
-          </button>
-          <button
             onClick={() => setShowShareDialog(true)}
             className="flex items-center justify-center space-x-2 px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600"
             title="Share Goals"
@@ -317,7 +258,7 @@ export function Goals() {
             <Crown className="w-5 h-5" />
             <span>Plan</span>
           </button>
-          {user?.role === 'admin' && user?.email === 'admin@admin.com' && (
+          {isAdmin && (
             <button
               onClick={() => navigate('/admin')}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
@@ -329,6 +270,14 @@ export function Goals() {
           )}
         </div>
       </div>
+
+      {importError && (
+        <div className="max-w-4xl mx-auto mb-6">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+            {importError}
+          </div>
+        </div>
+      )}
 
       {/* Subscription limit warning */}
       {isAtLimit && (

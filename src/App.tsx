@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
@@ -15,27 +15,46 @@ import { AdvertisingManager } from './components/AdvertisingManager';
 import PWAInstallPrompt from './components/PWAInstallPrompt.tsx';
 import { useStore } from './store';
 import { onAuthStateChange, signOutUser } from './services/auth';
+import { loadFromFirestore } from './services/db';
 
 function App() {
-  const { user, isAuthLoading, setUser, setAuthLoading, clearUserData } = useStore();
+  const { user, isAuthLoading, setUser, setAuthLoading, clearUserData, goals, setGoals } = useStore();
+  const activeGoalCount = goals.filter((g) => !g.completed).length;
+  const loadedForUid = useRef<string | null>(null);
 
   useEffect(() => {
     // Listen for auth state changes
     const unsubscribe = onAuthStateChange((user) => {
       console.log('[DEBUG] Auth state change:', user ? 'authenticated' : 'unauthenticated');
-      
+
       // Clear user data when logging out (user becomes null)
       if (!user) {
         console.log('[DEBUG] User logged out, clearing user data');
         clearUserData();
+        loadedForUid.current = null;
       }
-      
+
       setUser(user);
       setAuthLoading(false);
     });
 
     return () => unsubscribe();
   }, [setUser, setAuthLoading, clearUserData]);
+
+  // Load goals once per authenticated session, app-wide, so every route
+  // (including /subscription on a direct visit) sees the real active-goal
+  // count rather than a stale or hard-coded value.
+  useEffect(() => {
+    if (!user || loadedForUid.current === user.uid) return;
+    loadedForUid.current = user.uid;
+
+    loadFromFirestore()
+      .then((firestoreGoals) => setGoals(firestoreGoals ?? []))
+      .catch((error) => {
+        console.error('Error loading goals:', error);
+        setGoals([]);
+      });
+  }, [user, setGoals]);
 
   const handleSignOut = async () => {
     try {
@@ -82,9 +101,9 @@ function App() {
                 <Route path="/help" element={<Help />} />
                 <Route
                   path="/subscription"
-                  element={<SubscriptionPlan user={user} currentGoalCount={0} />}
+                  element={<SubscriptionPlan user={user} currentGoalCount={activeGoalCount} />}
                 />
-                {user.role === 'admin' && user.email === 'admin@admin.com' && (
+                {user.isTrustedAdmin && (
                   <Route path="/admin" element={<AdminDashboard />} />
                 )}
                 <Route path="/" element={<Navigate to="/goals" replace />} />

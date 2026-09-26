@@ -1,48 +1,127 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // User profiles - users can only access their own profile
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Trusted admin status comes ONLY from the Firebase custom claim set by
+    // functions/src/admin/setAdminClaim.ts. Never derive it from an email
+    // address or from a client-writable Firestore field — see
+    // admin_subscriptions.md section 2/3.
+    function isTrustedAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function unchangedField(field) {
+      return !(field in request.resource.data) ||
+        !(field in resource.data) ||
+        request.resource.data[field] == resource.data[field];
+    }
+
+    // User profiles.
+    //
+    // Owners may read their own profile and update only safe personal
+    // fields. `role` and `subscriptionPlan` are privileged: they must be
+    // unchanged on any client-originated write. The backend uses the Admin
+    // SDK, which bypasses these rules entirely, so server functions
+    // (createFreeProfile, updateOwnProfile, admin grant actions) remain the
+    // only way to set them.
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      allow read: if request.auth != null &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow read: if isOwner(userId) || isTrustedAdmin();
+
+      allow create: if isOwner(userId) &&
+        request.resource.data.role == 'user' &&
+        request.resource.data.subscriptionPlan == 'free';
+
+      allow update: if isOwner(userId) &&
+        unchangedField('role') &&
+        unchangedField('subscriptionPlan') &&
+        unchangedField('isActive') &&
+        unchangedField('uid') &&
+        unchangedField('email');
+
+      allow delete: if false;
     }
 
-    // Goals - users can only access their own goals, admins can perform aggregation queries
+    // Goals — owner may read their own goals; ALL writes go through the
+    // authenticated backend transaction functions/src/goals/mutateGoals.ts,
+    // which enforces the active-goal quota atomically (rules alone cannot
+    // count across documents safely). The Admin SDK bypasses these rules,
+    // so mutateGoals remains the only way to write a goal once clients
+    // migrate to calling it (admin_subscriptions.md section 4/6).
     match /goals/{goalId} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      // Allow admin users to read for aggregation/counting purposes only
-      allow read: if request.auth != null &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow read: if isTrustedAdmin(); // aggregation/counting only
+      allow write: if false;
     }
 
-    // Time blocks - users can only access their own time blocks
+    // Idempotency markers for mutateGoals — backend-only.
+    match /goalMutationRequests/{requestId} {
+      allow read, write: if false;
+    }
+
+    // Time blocks — unchanged from the pre-billing rules.
     match /timeBlocks/{blockId} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow read, write: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
     }
 
-    // Shared goals - authenticated users can read/write shared goals
+    // Shared goals — unchanged from the pre-billing rules.
     match /sharedGoals/{shareId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn();
     }
 
-    // Campaigns - admin users can manage, all authenticated users can read (for displaying ads)
+    // Campaigns / advertising — admin write now requires the trusted claim,
+    // not a hard-coded email.
     match /campaigns/{campaignId} {
-      allow read: if request.auth != null;
-      allow write, create, delete: if request.auth != null && request.auth.token.email == 'admin@admin.com';
+      allow read: if isSignedIn();
+      allow write, create, delete: if isTrustedAdmin();
     }
 
-    // Advertising Ways - admin users can manage, all authenticated users can read (for displaying ads)
     match /advertisingWays/{advertisingWayId} {
-      allow read: if request.auth != null;
-      allow write, create, delete: if request.auth != null && request.auth.token.email == 'admin@admin.com';
+      allow read: if isSignedIn();
+      allow write, create, delete: if isTrustedAdmin();
     }
 
-    // Deny all other access
+    // Billing and entitlement collections are backend-owned. The Admin SDK
+    // bypasses these rules for writes; clients only ever read.
+    match /billingCustomers/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    match /entitlements/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    match /usage/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    match /complimentaryGrants/{userId} {
+      allow read: if isOwner(userId) || isTrustedAdmin();
+      allow write: if false;
+    }
+
+    // Backend-only: no client read or write.
+    match /stripeEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /adminAuditLogs/{entryId} {
+      allow read: if isTrustedAdmin();
+      allow write: if false;
+    }
+
+    // Deny all other access.
     match /{document=**} {
       allow read, write: if false;
     }

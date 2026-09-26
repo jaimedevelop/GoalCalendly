@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, RotateCcw } from 'lucide-react';
 import { useStore } from '../store';
 import { format } from 'date-fns';
+import { reopenGoal } from '../services/goals.js';
 
 export function CompletedGoals() {
   const navigate = useNavigate();
-  const { goals, updateGoal } = useStore();
+  const { goals, setGoals } = useStore();
   const completedGoals = goals.filter(g => g.completed);
   const [selectedGoals, setSelectedGoals] = useState<Set<string>>(new Set());
+  const [restoreError, setRestoreError] = useState<string | null>(null);
 
   const toggleGoalSelection = (goalId: string) => {
     const newSelection = new Set(selectedGoals);
@@ -20,27 +22,44 @@ export function CompletedGoals() {
     setSelectedGoals(newSelection);
   };
 
-  const handleRestore = (goalId: string) => {
-    if (window.confirm('Are you sure you want to restore this goal?')) {
-      updateGoal(goalId, {
-        completed: false,
-        completedDate: undefined
-      });
-      // Clear the selected goals when restoring via icon
+  // Reopening a completed goal counts against the active-goal limit, so it
+  // goes through the server's reopen mutation rather than a plain field
+  // update — the server can reject it (e.g. already at the limit) without
+  // us ever showing a false "restored" state.
+  const handleRestore = async (goalId: string) => {
+    if (!window.confirm('Are you sure you want to restore this goal?')) return;
+
+    setRestoreError(null);
+    const result = await reopenGoal(goalId);
+    if (result.ok) {
+      setGoals(goals.map(g => (g.id === goalId ? { ...g, completed: false, completedDate: undefined } : g)));
       setSelectedGoals(new Set());
+    } else {
+      setRestoreError(result.error?.message ?? 'Could not restore this goal. You may be at your active goal limit.');
     }
   };
 
-  const handleRestoreSelected = () => {
-    if (window.confirm(`Are you sure you want to restore ${selectedGoals.size} selected goals?`)) {
-      selectedGoals.forEach(goalId => {
-        updateGoal(goalId, {
-          completed: false,
-          completedDate: undefined
-        });
-      });
-      setSelectedGoals(new Set());
+  const handleRestoreSelected = async () => {
+    if (!window.confirm(`Are you sure you want to restore ${selectedGoals.size} selected goals?`)) return;
+
+    setRestoreError(null);
+    const ids = Array.from(selectedGoals);
+    const results = await Promise.all(ids.map(goalId => reopenGoal(goalId)));
+
+    const succeededIds = ids.filter((_, i) => results[i].ok);
+    const firstError = results.find(r => !r.ok)?.error?.message;
+
+    if (succeededIds.length > 0) {
+      setGoals(goals.map(g => (succeededIds.includes(g.id) ? { ...g, completed: false, completedDate: undefined } : g)));
     }
+    if (firstError) {
+      setRestoreError(
+        succeededIds.length < ids.length
+          ? `Restored ${succeededIds.length} of ${ids.length}. Some could not be restored: ${firstError}`
+          : firstError
+      );
+    }
+    setSelectedGoals(new Set());
   };
 
   return (
@@ -55,6 +74,12 @@ export function CompletedGoals() {
         </button>
         <h1 className="text-2xl font-bold">Completed Goals</h1>
       </div>
+
+      {restoreError && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+          {restoreError}
+        </div>
+      )}
 
       {completedGoals.length === 0 ? (
         <div className="text-center py-12">

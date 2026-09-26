@@ -622,7 +622,10 @@ const AdminDashboard: React.FC = () => {
                     {users.map((user) => {
                       const userGoalCount = goalsByUser[user.uid] || 0;
                       const userPlan = SUBSCRIPTION_PLANS[user.subscriptionPlan];
-                      const isAdmin = user.email === 'admin@admin.com';
+                      // NOTE: this list comes from getAllUsers() (Firestore `role` field only);
+                      // it cannot see the trusted admin custom claim. Treat as informational
+                      // until step 9 replaces this with a backend-listed, claim-verified view.
+                      const isAdmin = user.role === 'admin';
                       const maxGoals = isAdmin ? -1 : userPlan.maxGoals;
                       const isAtLimit = !isAdmin && maxGoals !== -1 && userGoalCount >= maxGoals;
                       const goalsRemaining = isAdmin || maxGoals === -1 ? '∞' : Math.max(0, maxGoals - userGoalCount);
@@ -652,7 +655,7 @@ const AdminDashboard: React.FC = () => {
                               value={user.subscriptionPlan}
                               onChange={(e) => handleUpdateSubscription(user.uid, e.target.value as SubscriptionPlan)}
                               className="text-sm border border-gray-300 rounded px-2 py-1"
-                              disabled={user.email === 'admin@admin.com'}
+                              disabled={user.role === 'admin'}
                             >
                               <option value="free">Free</option>
                               <option value="pro">Pro</option>
@@ -705,7 +708,7 @@ const AdminDashboard: React.FC = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <div className="flex items-center gap-2">
-                              {user.email !== 'admin@admin.com' && (
+                              {user.role !== 'admin' && (
                                 <>
                                   <button
                                     onClick={() => handleToggleUserStatus(user.uid, user.isActive)}

@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+*.tsbuildinfo
 
 # Environment variables
 .env
@@ -23,6 +24,14 @@ dist-ssr
 .firebase/
 firebase-debug.log
 firestore-debug.log
+firebase-export-*/
+functions/lib/
+functions/.env
+
+# Stripe resource inventories are non-secret but environment-specific
+# generated output — review before committing rather than auto-tracking.
+config/stripe-resources.*.json
+!config/stripe-resources.example.json
 
 # Editor directories and files
 .vscode/*

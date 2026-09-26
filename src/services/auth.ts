@@ -17,17 +17,36 @@ export interface AuthUser {
   role: UserRole;
   subscriptionPlan: SubscriptionPlan;
   isActive: boolean;
+  /**
+   * True only when the Firebase ID token carries the `admin` custom claim,
+   * set exclusively by functions/src/admin/setAdminClaim.ts. This replaces
+   * the old `email === 'admin@admin.com'` check (admin_subscriptions.md
+   * section 2/3) — do not add an email comparison back in.
+   */
+  isTrustedAdmin: boolean;
 }
 
 // Convert UserProfile to AuthUser
-const userProfileToAuthUser = (profile: UserProfile): AuthUser => ({
+const userProfileToAuthUser = (profile: UserProfile, isTrustedAdmin: boolean): AuthUser => ({
   uid: profile.uid,
   email: profile.email,
   displayName: profile.displayName,
   role: profile.role,
   subscriptionPlan: profile.subscriptionPlan,
-  isActive: profile.isActive
+  isActive: profile.isActive,
+  isTrustedAdmin,
 });
+
+/** Reads the `admin` custom claim from the current ID token, forcing a refresh so a just-granted claim is picked up without requiring re-login. */
+const readTrustedAdminClaim = async (user: User): Promise<boolean> => {
+  try {
+    const tokenResult = await user.getIdTokenResult();
+    return tokenResult.claims.admin === true;
+  } catch (error) {
+    console.error('Error reading admin claim:', error);
+    return false;
+  }
+};
 
 // Sign up with email and password
 export const signUp = async (email: string, password: string, displayName?: string): Promise<AuthUser> => {
@@ -42,8 +61,9 @@ export const signUp = async (email: string, password: string, displayName?: stri
     
     // Create user profile in Firestore
     const userProfile = await createUserProfile(user.uid, email, displayName || null);
-    
-    return userProfileToAuthUser(userProfile);
+    const isTrustedAdmin = await readTrustedAdminClaim(user);
+
+    return userProfileToAuthUser(userProfile, isTrustedAdmin);
   } catch (error) {
     console.error('Error signing up:', error);
     throw error;
@@ -67,8 +87,9 @@ export const signIn = async (email: string, password: string): Promise<AuthUser>
       await updateUserProfile(user.uid, { lastLoginAt: new Date().toISOString() });
       userProfile.lastLoginAt = new Date().toISOString();
     }
-    
-    return userProfileToAuthUser(userProfile);
+
+    const isTrustedAdmin = await readTrustedAdminClaim(user);
+    return userProfileToAuthUser(userProfile, isTrustedAdmin);
   } catch (error) {
     console.error('Error signing in:', error);
     throw error;
@@ -98,8 +119,9 @@ export const onAuthStateChange = (callback: (user: AuthUser | null) => void): ((
         // Create profile if it doesn't exist
         userProfile = await createUserProfile(user.uid, user.email || '', user.displayName);
       }
-      
-      callback(userProfileToAuthUser(userProfile));
+
+      const isTrustedAdmin = await readTrustedAdminClaim(user);
+      callback(userProfileToAuthUser(userProfile, isTrustedAdmin));
     } else {
       callback(null);
     }
@@ -112,7 +134,8 @@ export const getCurrentUser = async (): Promise<AuthUser | null> => {
   if (user) {
     const userProfile = await getUserProfile(user.uid);
     if (userProfile) {
-      return userProfileToAuthUser(userProfile);
+      const isTrustedAdmin = await readTrustedAdminClaim(user);
+      return userProfileToAuthUser(userProfile, isTrustedAdmin);
     }
   }
   return null;

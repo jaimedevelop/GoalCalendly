@@ -54,6 +54,15 @@ export async function getGoalsCountByUser(): Promise<Record<string, number>> {
 }
 
 // Firestore functions
+/**
+ * @deprecated Direct client writes to `goals/*` are denied by firestore.rules
+ * as of admin_subscriptions.md step 4 — this will always fail with a
+ * permission-denied error against the deployed rules. Use
+ * src/services/goals.ts (createGoal/importGoals/etc., backed by the
+ * server-side mutateGoals transaction) instead. Kept only because
+ * src/scripts/initializeFirestore.ts (a standalone dev seeding script,
+ * already broken by an unrelated missing-module error) references it.
+ */
 export async function saveToFirestore(goals: Goal[]): Promise<boolean> {
   try {
     console.log('[DEBUG] saveToFirestore: Starting save operation');
@@ -235,6 +244,7 @@ export async function getGoalFromFirestore(goalId: string): Promise<Goal | null>
 }
 
 // Delete a goal from Firestore
+/** @deprecated Direct client writes to `goals/*` are denied by firestore.rules. Use src/services/goals.ts's deleteGoalRemote instead. */
 export async function deleteGoalFromFirestore(goalId: string): Promise<boolean> {
   try {
     console.log('🗑️ [DEBUG] Starting Firestore goal deletion:', { goalId });

@@ -12,7 +12,7 @@ export const AdvertisingManager: React.FC<AdvertisingManagerProps> = ({ children
   const [modalShown, setModalShown] = useState(false);
 
   // Check if user is free tier (not admin and has free subscription)
-  const isFreeUser = user && user.subscriptionPlan === 'free' && user.email !== 'admin@admin.com';
+  const isFreeUser = user && user.subscriptionPlan === 'free' && !user.isTrustedAdmin;
 
   // Show modal popup for milestone-based advertising (simulate goal completion)
   useEffect(() => {

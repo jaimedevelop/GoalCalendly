@@ -53,7 +53,7 @@ async function setupAdvertisingDemo() {
     console.log('• 6 advertising presentation methods (banner, modal, widget, notification, suggestion, footer)');
     console.log('• 3 demo advertising campaigns');
     console.log('\n🎯 How to test:');
-    console.log('1. Login as admin (admin@admin.com) to manage advertising in the Admin Dashboard');
+    console.log('1. Login as a user with the trusted admin claim to manage advertising in the Admin Dashboard');
     console.log('2. Login as a free user to see the advertisements in action');
     console.log('3. Free users will see:');
     console.log('   - Banner ads at the top of the page');

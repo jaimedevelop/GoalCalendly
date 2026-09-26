@@ -6,15 +6,19 @@ import { AdvertisingDisplay } from './AdvertisingDisplay';
 export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const addGoal = useStore((state) => state.addGoal);
   const { user } = useStore();
 
   // Check if user is free tier (not admin and has free subscription)
-  const isFreeUser = user && user.subscriptionPlan === 'free' && user.email !== 'admin@admin.com';
+  const isFreeUser = user && user.subscriptionPlan === 'free' && !user.isTrustedAdmin;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    setError(null);
+    setSubmitting(true);
+
     const newGoal = {
       id: crypto.randomUUID(),
       name,
@@ -32,10 +36,16 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
       settings: DEFAULT_GOAL_SETTINGS,
     };
 
-    // Add goal to store (auto-save is handled by the store)
-    addGoal(newGoal);
-    
-    onClose();
+    // The server enforces the active-goal limit; a rejection here means the
+    // dialog stays open with the user's input preserved, not a silent failure.
+    const ok = await addGoal(newGoal);
+    setSubmitting(false);
+
+    if (ok) {
+      onClose();
+    } else {
+      setError(useStore.getState().lastGoalError ?? 'Could not create this goal. Please try again.');
+    }
   };
 
   return (
@@ -78,7 +88,11 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
               />
             </div>
           )}
-          
+
+          {error && (
+            <p className="text-sm text-red-600" role="alert">{error}</p>
+          )}
+
           <div className="flex justify-end space-x-2">
             <button
               type="button"
@@ -89,9 +103,10 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600"
+              disabled={submitting}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Create Goal
+              {submitting ? 'Creating…' : 'Create Goal'}
             </button>
           </div>
         </form>

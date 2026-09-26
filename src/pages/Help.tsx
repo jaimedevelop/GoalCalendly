@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Download, Upload, Share2, Settings, CheckSquare, Save, Crown, Layout } from 'lucide-react';
+import { SUBSCRIPTION_PLANS } from '../../shared/subscriptionPlans.js';
 
 export function Help() {
   const navigate = useNavigate();
@@ -150,25 +151,25 @@ export function Help() {
               <h3 className="font-medium text-gray-900 mb-2">Free</h3>
               <p className="text-gray-700 text-sm mb-2">Perfect for getting started</p>
               <ul className="text-xs text-gray-600 space-y-1">
-                <li>• Up to 3 goals</li>
+                <li>• Up to {SUBSCRIPTION_PLANS.free.maxActiveGoals} active goals</li>
                 <li>• Basic time tracking</li>
                 <li>• Cloud sync</li>
               </ul>
             </div>
             <div className="bg-blue-50 p-4 rounded-md">
-              <h3 className="font-medium text-gray-900 mb-2">Pro - $3.50</h3>
+              <h3 className="font-medium text-gray-900 mb-2">Pro - ${SUBSCRIPTION_PLANS.pro.monthlyPrice}</h3>
               <p className="text-gray-700 text-sm mb-2">For serious goal achievers</p>
               <ul className="text-xs text-gray-600 space-y-1">
-                <li>• Up to 15 goals</li>
+                <li>• Up to {SUBSCRIPTION_PLANS.pro.maxActiveGoals} goals</li>
                 <li>• Advanced features</li>
                 <li>• Priority support</li>
               </ul>
             </div>
             <div className="bg-purple-50 p-4 rounded-md">
-              <h3 className="font-medium text-gray-900 mb-2">Platinum - $9.50</h3>
+              <h3 className="font-medium text-gray-900 mb-2">Platinum - ${SUBSCRIPTION_PLANS.platinum.monthlyPrice}</h3>
               <p className="text-gray-700 text-sm mb-2">For power users</p>
               <ul className="text-xs text-gray-600 space-y-1">
-                <li>• Up to 30 goals</li>
+                <li>• Up to {SUBSCRIPTION_PLANS.platinum.maxActiveGoals} goals</li>
                 <li>• Premium features</li>
                 <li>• Premium support</li>
               </ul>

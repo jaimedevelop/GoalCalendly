@@ -11,7 +11,14 @@
     "init:firestore": "tsx src/scripts/initializeFirestore.ts",
     "test:firestore": "tsx src/scripts/testFirestore.ts",
     "diagnose:firestore": "tsx src/scripts/diagnoseFirestore.ts",
-    "diagnose:isolation": "tsx src/scripts/diagnoseUserIsolation.ts"
+    "diagnose:isolation": "tsx src/scripts/diagnoseUserIsolation.ts",
+    "functions:install": "npm --prefix functions install",
+    "functions:build": "npm --prefix functions run build",
+    "functions:test": "npm --prefix functions test",
+    "emulators": "firebase emulators:start --only functions,firestore,auth",
+    "functions:test:manual-ping": "node functions/tests/ping.manual.mjs",
+    "test:rules": "node --test tests/firestore.rules.test.mjs",
+    "test:goal-limits": "node --test functions/tests/goalLimits.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
@@ -26,17 +33,18 @@
     "qrcode.react": "^3.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.22.3",
+    "react-router-dom": "^7.18.4",
     "tailwind-merge": "^2.2.1",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "@eslint/js": "^9.9.1",
+    "@eslint/js": "9.9.1",
+    "@firebase/rules-unit-testing": "^4.0.1",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.18",
-    "eslint": "^9.9.1",
+    "eslint": "9.9.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.11",
     "globals": "^15.9.0",

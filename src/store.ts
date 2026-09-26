@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { Goal, Timer, GoalSettings, DEFAULT_GOAL_SETTINGS, LEVELS, WeeklyTrophy } from './types';
 import { format, getWeek } from 'date-fns';
 import { AuthUser } from './services/auth.js';
-import { saveToFirestore, deleteGoalFromFirestore } from './services/db';
+import { createGoal, updateGoalFields, completeGoal, deleteGoalRemote } from './services/goals.js';
 
 interface Store {
   goals: Goal[];
@@ -10,9 +10,12 @@ interface Store {
   defaultSettings: GoalSettings;
   user: AuthUser | null;
   isAuthLoading: boolean;
-  addGoal: (goal: Goal) => void;
-  updateGoal: (goalId: string, updates: Partial<Goal>) => void;
-  deleteGoal: (goalId: string) => void;
+  /** Set to a human-readable message when the server rejects the most recent goal mutation. Cleared on the next successful one. */
+  lastGoalError: string | null;
+  addGoal: (goal: Goal) => Promise<boolean>;
+  updateGoal: (goalId: string, updates: Partial<Goal>) => Promise<boolean>;
+  completeGoalById: (goalId: string) => Promise<boolean>;
+  deleteGoal: (goalId: string) => Promise<boolean>;
   startTimer: (goalId: string) => void;
   stopTimer: () => void;
   resetTimer: () => void;
@@ -72,35 +75,7 @@ const checkAndUpdateTrophies = (goal: Goal): { trophies: number; weeklyTrophies:
   };
 };
 
-// Auto-save helper function with retry logic
-const autoSaveToFirestore = async (goals: Goal[]) => {
-  try {
-    console.log('[DEBUG] Auto-save: Starting save operation for', goals.length, 'goals');
-    const success = await saveToFirestore(goals);
-    console.log('[DEBUG] Auto-save: Save operation result:', success);
-    if (!success) {
-      console.error('[DEBUG] Auto-save: Save operation returned false');
-      // Retry once after a short delay
-      setTimeout(async () => {
-        console.log('[DEBUG] Auto-save: Retrying save operation');
-        await saveToFirestore(goals);
-      }, 1000);
-    }
-  } catch (error) {
-    console.error('[DEBUG] Auto-save failed:', error);
-    // Retry once after a short delay
-    setTimeout(async () => {
-      console.log('[DEBUG] Auto-save: Retrying after error');
-      try {
-        await saveToFirestore(goals);
-      } catch (retryError) {
-        console.error('[DEBUG] Auto-save retry failed:', retryError);
-      }
-    }, 1000);
-  }
-};
-
-export const useStore = create<Store>((set) => ({
+export const useStore = create<Store>((set, get) => ({
   goals: [],
   activeTimer: {
     goalId: null,
@@ -111,82 +86,86 @@ export const useStore = create<Store>((set) => ({
   defaultSettings: DEFAULT_GOAL_SETTINGS,
   user: null,
   isAuthLoading: true,
-  addGoal: (goal) => set((state) => {
-    console.log('[DEBUG] addGoal: Adding goal:', goal.name);
-    const newGoals = [...state.goals, {
-      ...goal,
-      weeklyTrophies: []
-    }];
-    
-    console.log('[DEBUG] addGoal: New goals array length:', newGoals.length);
-    
-    // Auto-save to Firestore
-    autoSaveToFirestore([newGoals[newGoals.length - 1]]);
-    
-    return { goals: newGoals };
-  }),
-  updateGoal: (goalId, updates) =>
-    set((state) => {
-      const newGoals = state.goals.map((goal) =>
-        goal.id === goalId ? { ...goal, ...updates } : goal
-      );
-      
-      // Auto-save to Firestore
-      const changedGoal = newGoals.find(goal => goal.id === goalId);
-      if (changedGoal) autoSaveToFirestore([changedGoal]);
-      
-      return { goals: newGoals };
-    }),
-  deleteGoal: async (goalId) => {
-    console.log('🗑️ [DEBUG] Store deleteGoal called:', { goalId });
-    
-    // First delete from Firestore
-    const firestoreSuccess = await deleteGoalFromFirestore(goalId);
-    console.log('🗑️ [DEBUG] Firestore deletion result:', { goalId, success: firestoreSuccess });
-    
-    if (!firestoreSuccess) {
-      console.error('🗑️ [DEBUG] Failed to delete from Firestore, aborting local deletion');
-      return;
+  lastGoalError: null,
+  addGoal: async (goal) => {
+    const newGoal = { ...goal, weeklyTrophies: [] };
+    // Optimistic local add for responsive UI; rolled back if the server rejects it
+    // (e.g. over the active-goal limit) rather than reporting false success.
+    set((state) => ({ goals: [...state.goals, newGoal], lastGoalError: null }));
+
+    const result = await createGoal(newGoal);
+    if (!result.ok) {
+      set((state) => ({
+        goals: state.goals.filter((g) => g.id !== newGoal.id),
+        lastGoalError: result.error?.message ?? 'Could not create this goal.',
+      }));
+      return false;
     }
-    
-    // Then update local state
-    set((state) => {
-      console.log('🗑️ [DEBUG] Updating local state - before:', {
-        goalCount: state.goals.length,
-        goalExists: state.goals.some(g => g.id === goalId)
-      });
-      
-      const newGoals = state.goals.filter((goal) => goal.id !== goalId);
-      const newActiveTimer = state.activeTimer.goalId === goalId ? {
-        goalId: null,
-        isRunning: false,
-        startTime: null,
-        elapsedTime: 0,
-      } : state.activeTimer;
-      
-      console.log('🗑️ [DEBUG] Updating local state - after:', {
-        goalCount: newGoals.length,
-        timerReset: state.activeTimer.goalId === goalId
-      });
-      
-      // Remove from localStorage if it exists
-      try {
-        const localGoals = localStorage.getItem('goals');
-        if (localGoals) {
-          const parsedGoals = JSON.parse(localGoals);
-          const filteredLocalGoals = parsedGoals.filter((goal: Goal) => goal.id !== goalId);
-          localStorage.setItem('goals', JSON.stringify(filteredLocalGoals));
-          console.log('🗑️ [DEBUG] Removed goal from localStorage:', { goalId });
-        }
-      } catch (error) {
-        console.warn('🗑️ [DEBUG] Error updating localStorage:', error);
-      }
-      
-      return {
-        goals: newGoals,
-        activeTimer: newActiveTimer,
-      };
-    });
+    return true;
+  },
+  updateGoal: async (goalId, updates) => {
+    const previous = get().goals.find((g) => g.id === goalId);
+    if (!previous) return false;
+
+    set((state) => ({
+      goals: state.goals.map((goal) => (goal.id === goalId ? { ...goal, ...updates } : goal)),
+      lastGoalError: null,
+    }));
+
+    const result = await updateGoalFields(goalId, updates);
+    if (!result.ok) {
+      set((state) => ({
+        goals: state.goals.map((goal) => (goal.id === goalId ? previous : goal)),
+        lastGoalError: result.error?.message ?? 'Could not save this change.',
+      }));
+      return false;
+    }
+    return true;
+  },
+  completeGoalById: async (goalId) => {
+    const previous = get().goals.find((g) => g.id === goalId);
+    if (!previous) return false;
+    const completedDate = new Date().toISOString();
+
+    set((state) => ({
+      goals: state.goals.map((goal) => (goal.id === goalId ? { ...goal, completed: true, completedDate } : goal)),
+      lastGoalError: null,
+    }));
+
+    const result = await completeGoal(goalId);
+    if (!result.ok) {
+      set((state) => ({
+        goals: state.goals.map((goal) => (goal.id === goalId ? previous : goal)),
+        lastGoalError: result.error?.message ?? 'Could not mark this goal complete.',
+      }));
+      return false;
+    }
+    return true;
+  },
+  deleteGoal: async (goalId) => {
+    const state = get();
+    const previous = state.goals.find((g) => g.id === goalId);
+    if (!previous) return false;
+    const previousTimer = state.activeTimer;
+
+    set((s) => ({
+      goals: s.goals.filter((goal) => goal.id !== goalId),
+      activeTimer: s.activeTimer.goalId === goalId
+        ? { goalId: null, isRunning: false, startTime: null, elapsedTime: 0 }
+        : s.activeTimer,
+      lastGoalError: null,
+    }));
+
+    const result = await deleteGoalRemote(goalId);
+    if (!result.ok) {
+      set((s) => ({
+        goals: [...s.goals, previous],
+        activeTimer: previousTimer,
+        lastGoalError: result.error?.message ?? 'Could not delete this goal.',
+      }));
+      return false;
+    }
+    return true;
   },
   startTimer: (goalId) =>
     set((state) => {
@@ -195,7 +174,10 @@ export const useStore = create<Store>((set) => ({
       const goals = state.goals.map(goal =>
         goal.id === goalId ? { ...goal, lastTimerStartedAt: startTime } : goal
       );
-      autoSaveToFirestore(goals.filter(goal => goal.id === goalId));
+      // lastTimerStartedAt is a low-stakes UX field (resumes an in-progress
+      // timer after a refresh); persisted best-effort via updateGoal rather
+      // than blocking timer start on a round trip.
+      updateGoalFields(goalId, { lastTimerStartedAt: startTime });
       return {
         goals,
         activeTimer: {
@@ -206,69 +188,59 @@ export const useStore = create<Store>((set) => ({
         },
       };
     }),
-  stopTimer: () =>
-    set((state) => {
-      const { activeTimer, goals } = state;
-      if (!activeTimer.goalId || !activeTimer.startTime) return state;
+  stopTimer: () => {
+    const { activeTimer, goals } = get();
+    if (!activeTimer.goalId || !activeTimer.startTime) return;
 
-      const elapsedHours = (Date.now() - activeTimer.startTime) / (1000 * 60 * 60);
-      const goal = goals.find((g) => g.id === activeTimer.goalId);
+    const elapsedHours = (Date.now() - activeTimer.startTime) / (1000 * 60 * 60);
+    const goal = goals.find((g) => g.id === activeTimer.goalId);
+    if (!goal) return;
 
-      if (!goal) return state;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const updatedPracticeDays = goal.practiceDays || [];
+    if (!updatedPracticeDays.includes(today)) {
+      updatedPracticeDays.push(today);
+    }
 
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const updatedPracticeDays = goal.practiceDays || [];
-      if (!updatedPracticeDays.includes(today)) {
-        updatedPracticeDays.push(today);
+    const newWeeklyTimeSpent = goal.weeklyTimeSpent + elapsedHours;
+    const { trophies, weeklyTrophies } = checkAndUpdateTrophies({
+      ...goal,
+      weeklyTimeSpent: newWeeklyTimeSpent
+    });
+
+    // Check for level up
+    let currentLevel = goal.currentLevel;
+    const totalTimeSpent = goal.totalTimeSpent + elapsedHours;
+
+    for (let i = currentLevel - 1; i < LEVELS.length; i++) {
+      if (totalTimeSpent >= LEVELS[i].requiredHours) {
+        currentLevel = i + 1;
       }
+    }
 
-      const newWeeklyTimeSpent = goal.weeklyTimeSpent + elapsedHours;
-      const { trophies, weeklyTrophies } = checkAndUpdateTrophies({
-        ...goal,
-        weeklyTimeSpent: newWeeklyTimeSpent
-      });
+    const timerUpdates = {
+      totalTimeSpent,
+      weeklyTimeSpent: newWeeklyTimeSpent,
+      practiceDays: updatedPracticeDays,
+      trophies,
+      weeklyTrophies,
+      currentLevel,
+    };
 
-      // Check for level up
-      let currentLevel = goal.currentLevel;
-      const totalTimeSpent = goal.totalTimeSpent + elapsedHours;
-      
-      for (let i = currentLevel - 1; i < LEVELS.length; i++) {
-        if (totalTimeSpent >= LEVELS[i].requiredHours) {
-          currentLevel = i + 1;
-        }
-      }
-      
-      const updatedGoal = {
-        ...goal,
-        totalTimeSpent,
-        weeklyTimeSpent: newWeeklyTimeSpent,
-        practiceDays: updatedPracticeDays,
-        trophies,
-        weeklyTrophies,
-        currentLevel,
-        settings: {
-          ...goal.settings,
-          reminders: goal.settings.reminders
-        }
-      };
+    set((state) => ({
+      goals: state.goals.map((g) => (g.id === goal.id ? { ...g, ...timerUpdates } : g)),
+      activeTimer: {
+        goalId: null,
+        isRunning: false,
+        startTime: null,
+        elapsedTime: 0,
+      },
+    }));
 
-      // Settings are now saved to Firestore with the goal data
-
-      const newGoals = goals.map((g) => (g.id === goal.id ? updatedGoal : g));
-      
-      // Auto-save to Firestore
-      autoSaveToFirestore([updatedGoal]);
-      
-      return {
-        goals: newGoals,
-        activeTimer: {
-          goalId: null,
-          isRunning: false,
-          startTime: null,
-          elapsedTime: 0,
-        },
-      };
-    }),
+    // Timer progress never increases the active-goal count, so this is safe
+    // to persist best-effort without the optimistic-rollback dance addGoal uses.
+    updateGoalFields(goal.id, timerUpdates);
+  },
   resetTimer: () =>
     set({
       activeTimer: {
@@ -278,8 +250,13 @@ export const useStore = create<Store>((set) => ({
         elapsedTime: 0,
       },
     }),
+  // Local-state-only: recomputes trophies for display and replaces the
+  // in-memory goal list. This NEVER writes to the server — it is used to
+  // apply a freshly loaded/server-confirmed goal list. Any flow that means
+  // to persist new or changed goals (import, shared import, duplication)
+  // must go through services/goals.ts (importGoals, etc.), which enforces
+  // the active-goal quota server-side, rather than calling setGoals directly.
   setGoals: (goals) => {
-    console.log('📥 [DEBUG] setGoals called with', goals.length, 'goals');
     const processedGoals = goals.map(goal => {
       const { trophies, weeklyTrophies } = checkAndUpdateTrophies(goal);
       return {
@@ -288,25 +265,6 @@ export const useStore = create<Store>((set) => ({
         weeklyTrophies: weeklyTrophies || []
       };
     });
-    
-    console.log('📥 [DEBUG] setGoals processed', processedGoals.length, 'goals');
-    
-    // Only auto-save if we're setting goals from user actions, not from initial load
-    // We can detect this by checking if the goals have been modified (trophy updates)
-    const modifiedGoals = processedGoals.filter((goal, index) =>
-      goals[index] && (
-        goal.trophies !== goals[index].trophies ||
-        JSON.stringify(goal.weeklyTrophies) !== JSON.stringify(goals[index].weeklyTrophies || [])
-      )
-    );
-    
-    if (modifiedGoals.length > 0) {
-      console.log('📥 [DEBUG] setGoals detected trophy updates, auto-saving to Firestore');
-      autoSaveToFirestore(modifiedGoals);
-    } else {
-      console.log('📥 [DEBUG] setGoals no modifications detected, skipping auto-save');
-    }
-    
     set({ goals: processedGoals });
   },
   updateDefaultSettings: (settings) =>

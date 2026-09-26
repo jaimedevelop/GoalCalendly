@@ -23,7 +23,10 @@ export const createUserProfile = async (
     uid,
     email,
     displayName,
-    role: email === 'admin@admin.com' ? 'admin' : 'user',
+    // Role always starts as 'user'. Admin status is granted separately via a
+    // trusted Firebase custom claim (functions/src/admin/setAdminClaim.ts),
+    // never from an email address. See admin_subscriptions.md section 2/3.
+    role: 'user',
     subscriptionPlan: 'free',
     createdAt: new Date().toISOString(),
     lastLoginAt: new Date().toISOString(),
@@ -136,8 +139,11 @@ export const toggleUserStatus = async (uid: string, isActive: boolean): Promise<
 };
 
 // Check if user is admin
+// @deprecated Firestore's `role` field is client-writable-adjacent legacy
+// data and is no longer authoritative. Use AuthUser.isTrustedAdmin (backed
+// by the Firebase custom claim) from src/services/auth.ts instead.
 export const isAdmin = (userProfile: UserProfile | null): boolean => {
-  return userProfile?.role === 'admin' && userProfile?.email === 'admin@admin.com';
+  return userProfile?.role === 'admin';
 };
 
 // Get user goal count for subscription limits

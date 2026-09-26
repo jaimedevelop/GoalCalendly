@@ -11,7 +11,7 @@ interface SubscriptionPlanProps {
 const SubscriptionPlanComponent: React.FC<SubscriptionPlanProps> = ({ user, currentGoalCount }) => {
   const navigate = useNavigate();
   const currentPlan = SUBSCRIPTION_PLANS[user.subscriptionPlan];
-  const isAdmin = user.email === 'admin@admin.com';
+  const isAdmin = user.isTrustedAdmin;
   const isAtLimit = !isAdmin && currentPlan.maxGoals !== -1 && currentGoalCount >= currentPlan.maxGoals;
 
   const getPlanIcon = (plan: SubscriptionPlan) => {

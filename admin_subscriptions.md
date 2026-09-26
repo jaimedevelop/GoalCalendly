@@ -2,6 +2,8 @@
 
 Status: complete implementation and deployment plan. Updated September 26, 2026. The planned scope explicitly includes implementing billing, changing application behavior, creating Stripe resources, and deploying the finished system. This request produces the plan; the execution steps below are future work.
 
+Credential setup companion: [credentials.md](./credentials.md) explains account setup, test credentials, live credentials, and where to store them, step by step. It is an instruction document, never a place to paste private keys.
+
 ## 1. Prompt for future implementation
 
 Implement subscriptions for Goal Calendly using its existing React, TypeScript, Firebase Authentication, and Firestore application. Free users may have up to **2 active goals with advertising**. Preserve the README tier names and paid limits: Pro has 15 active goals, Platinum has 30, and Enterprise has unlimited goals with custom pricing. Paid users and trusted administrators are ad-free.
@@ -365,6 +367,7 @@ Step 5 can be prepared once step 2 is complete while goal-limit development cont
 
 ### Step 2 - Create the backend foundation
 
+- [ ] Follow [credentials.md](./credentials.md) steps 1-4 for project configuration and test access. Record secret locations/status only.
 - [ ] Create the `functions/` project, shared plan catalog, Firebase configuration, and environment templates from section 4.
 - [ ] Configure separate local/staging/production targets and secret bindings; keep Checkout disabled by default.
 - [ ] Add backend build, focused test, and emulator scripts to the appropriate package files.
@@ -458,6 +461,7 @@ Step 5 can be prepared once step 2 is complete while goal-limit development cont
 
 ### Step 11 - Create live resources and release production
 
+- [ ] Complete the live credential checklist in [credentials.md](./credentials.md), including separate production secrets and the production endpoint's signing secret.
 - [ ] Provision and verify live Stripe resources separately from test resources.
 - [ ] Record release artifacts and backup/export; keep new purchases disabled.
 - [ ] Follow the production cutover sequence in section 9 for backend, protected profiles, migration, frontend, rules, and old clients.
@@ -480,3 +484,29 @@ Step 5 can be prepared once step 2 is complete while goal-limit development cont
 ### How to track progress
 
 For each step, record its status (`not started`, `in progress`, `blocked`, or `complete`), changed files or commit, verification evidence, and next action. A blocked external configuration step does not prevent independent local work. Mark a step complete only after its completion check passes; keep this roadmap updated as implementation proceeds.
+
+### Progress log
+
+| Step | Status | Evidence | Next action |
+| --- | --- | --- | --- |
+| 1 | complete | `STEP1_BASELINE.md`: build/lint pass, baseline inventory of goal-write/admin/rules gaps recorded | Resolve open pricing and Enterprise-contact decisions before step 5/8 need them |
+| 2 | complete | `functions/` project created (build/tsconfig/deps); `shared/subscriptionPlans.ts` shared catalog; `firebase.json`, `.firebaserc` (placeholder project ID), `firestore.indexes.json`; root + functions scripts (`functions:install/build/test`, `emulators`); emulator smoke test verified `ping` callable rejects an unauthenticated request (`functions/tests/ping.manual.mjs`, `npm run functions:test:manual-ping`) | Fill real staging project ID into `.firebaserc` when supplied (credentials.md step 2); proceed to step 3 (entitlement types + rules) |
+| 3 | complete | Entitlement/billing/usage/audit types added (`src/types.ts`, `functions/src/lib/types.ts`); effective-access calculation `functions/src/lib/entitlements.ts` covering Free/paid/complimentary/admin/expired/grace states, 14 passing unit tests (`functions/tests/entitlements.test.ts`); server-authorized profile creation + allowlisted updates + audited complimentary grants (`functions/src/admin/manageAccess.ts`); trusted admin claim provisioning (`functions/src/admin/setAdminClaim.ts`, `functions/scripts/setAdminClaim.ts`); hard-coded `admin@admin.com` removed from all 8 app-code call sites, replaced by `AuthUser.isTrustedAdmin` read from the Firebase ID token custom claim; `firestore.rules` locked down (owner cannot write `role`/`subscriptionPlan`/`isActive`, new backend-only `billingCustomers`/`entitlements`/`usage`/`complimentaryGrants`/`stripeEvents`/`adminAuditLogs` collections); 9 passing emulator rule tests proving escalation is blocked (`tests/firestore.rules.test.mjs`, `npm run test:rules`) | No admin has been provisioned yet (needs `firebase functions:secrets`-free ADC access to run `setAdminClaim.ts` against the real project — not blocking, deferred to when an admin UID is supplied); proceed to step 4 (goal-limit enforcement) |
+| 4 | complete | Transactional server goal command `functions/src/goals/mutateGoals.ts`: atomic quota check + write in one Firestore transaction, idempotent via a `goalMutationRequests/{uid_requestId}` marker (replay-safe), covers create/import/sharedImport/duplicate/reopen (quota-checked) and update/complete/delete (never blocked by the limit, per the non-destructive over-limit policy); `firestore.rules` now denies all direct client writes to `goals/*`, funneling everything through the backend; client migrated onto it end to end — `src/services/goals.ts` (typed wrapper), `src/store.ts` (optimistic local update + automatic rollback and `lastGoalError` on server rejection, no more false local success), `NewGoalDialog.tsx`/`CompletedGoals.tsx`/`GoalCard.tsx`/`Goals.tsx` all call the server path for anything that can change the active count; removed the unguarded bulk "Save" button and the client-side `saveToFirestore` bulk write path (deprecated with a warning, kept only for a still-broken legacy seeding script); active-goal count is now loaded once app-wide on sign-in (`App.tsx`) so `/subscription` shows the real count instead of the previous hard-coded `currentGoalCount={0}`; 7 passing emulator integration tests (`functions/tests/goalLimits.test.mjs`, `npm run test:goal-limits`) covering up-to-the-limit creation, two concurrent creates from simulated devices (never exceeds the limit), duplicate request replay (no double count), an over-limit import batch (rejected atomically, no partial import), a legacy 3-goal Free user over the new 2-goal limit (can edit/complete/delete, cannot add), reopen validated like create, and unauthenticated rejection; existing 9 rules tests and 14 entitlement unit tests re-verified passing after the rules/store changes | Real device/offline conflict testing needs a deployed staging environment (not blocking further local steps); proceed to step 5 (Stripe test resource provisioning) — can run in parallel with any further step 4 polish |
+| 5 | complete | Live sandbox provisioning succeeded with the user's Stripe test key: created Product/Price pairs for Pro ($4.99/mo, $49.90/yr) and Platinum ($9.99/mo, $99.90/yr) and a Portal configuration (self-service plan switching between Pro/Platinum, cancel-at-period-end, payment method updates, invoice history); `npm run stripe:verify -- --env test` confirmed every Price's active state, currency, interval, and amount plus the Portal config; reran provisioning a second time and confirmed full idempotency (every resource reused, zero duplicates, identical IDs). One real bug found and fixed while actually running it: Stripe now requires an explicit `products` allowlist on `subscription_update` for the Portal config, which `provisionStripe.ts` didn't originally send — fixed to pass the Pro/Platinum product+price IDs. Non-secret IDs recorded in `credentials.md`'s handoff table and `config/stripe-resources.test.json` (gitignored). Also applied the confirmed $4.99/$9.99 pricing decision app-wide: `shared/subscriptionPlans.ts` was already correct; fixed the two remaining hard-coded/stale spots — `src/pages/Help.tsx` (was static "$3.50"/"$9.50"/"Up to 3 goals" text, now reads live from the shared catalog) and `README.md` (Free limit, all four plan prices, and the entire stale/insecure example security-rules section and admin-email instructions, which now point at the real `firestore.rules` and `setAdminClaim.ts`). `Landing.tsx`, `SubscriptionPlan.tsx`, and `AdminDashboard.tsx` already read pricing/limits dynamically from `SUBSCRIPTION_PLANS`, so they picked up the correct numbers automatically | Sandbox `STRIPE_SECRET_KEY` still needs to be bound to a deployed backend secret once a Firebase staging project exists (`credentials.md` step 7) — not blocking further local steps; proceed to step 6 (webhooks and reconciliation) |
+| 6-12 | not started | — | — |
+
+## 11. Credentials required by development stage
+
+| Stage | Required configuration/access | Secret handling |
+| --- | --- | --- |
+| Local UI and emulator development | Firebase web configuration or emulator configuration; local developer tooling | No live Stripe key needed |
+| Stripe integration testing | Stripe sandbox API key; test Price/Portal IDs; local webhook secret when testing event forwarding | Private keys remain in protected local/backend configuration |
+| Deployed staging tests | Staging Firebase project, deployment login, frontend URL, sandbox resources, staging endpoint signing secret | Staging Google Cloud Secret Manager |
+| Production deployment | Production Firebase/hosting access, live Stripe API key, live resource IDs, production webhook signing secret | Production Google Cloud Secret Manager |
+
+Use `STRIPE_SECRET_KEY` as the configuration name for the server API credential; it may contain a restricted Stripe key with the permissions the implemented endpoints need. Prefer restricted keys. Separate runtime permissions from temporary resource-provisioning permissions and verify them during testing. Do not require account passwords, bank details, recovery codes, or unrestricted service-account JSON keys to be sent to the developer.
+
+Firebase Cloud Functions uses its deployed service identity. A downloaded Firebase private key is not part of the normal setup. The selected frontend host receives only its public Firebase web configuration; Stripe private credentials stay on the Firebase backend. All `VITE_*` values become browser-visible.
+
+Live credentials are required before accepting real subscription payments, not before writing or testing the application. Track provisioned secret names and successful verification without storing secret values in this file or `credentials.md`. Follow the companion guide for the order of setup, especially webhook secrets, which cannot be finalized until the endpoint exists.

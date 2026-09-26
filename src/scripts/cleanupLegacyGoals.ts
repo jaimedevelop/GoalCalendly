@@ -34,9 +34,10 @@ export async function cleanupLegacyGoals() {
     
     console.log('✅ Current user:', currentUser.uid, currentUser.email);
     
-    // Only allow admin to run this cleanup
-    if (currentUser.email !== 'admin@admin.com') {
-      console.error('❌ Only admin users can run legacy cleanup');
+    // Only allow a trusted admin (Firebase custom claim) to run this cleanup.
+    // See admin_subscriptions.md section 2/3: no email-based admin check.
+    if (!currentUser.isTrustedAdmin) {
+      console.error('❌ Only trusted admin users can run legacy cleanup');
       return;
     }
     

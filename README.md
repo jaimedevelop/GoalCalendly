@@ -5,7 +5,7 @@ A comprehensive goal tracking application built with React, TypeScript, and Goog
 ## Features
 
 - **User Authentication**: Secure login and signup with Firebase Auth
-- **Subscription Plans**: Free (3 goals), Pro (15 goals), Platinum (30 goals), Enterprise (unlimited)
+- **Subscription Plans**: Free (2 active goals, $0), Pro (15 active goals, $4.99/mo), Platinum (30 active goals, $9.99/mo), Enterprise (unlimited, custom pricing)
 - **Admin Dashboard**: Admin users can manage all users and their subscriptions
 - Create and manage personal goals (user-scoped data)
 - Track progress with interactive calendars
@@ -26,7 +26,7 @@ A comprehensive goal tracking application built with React, TypeScript, and Goog
 ## Admin Features
 
 ### Administrator Account
-- **Admin Email**: admin@admin.com (automatically assigned admin role)
+- **Admin provisioning**: trusted admins are granted via a Firebase custom claim (see `functions/scripts/setAdminClaim.ts`), not an automatic email match. There is no special "admin" email address.
 - **User Management**: View, manage, and delete user accounts
 - **Subscription Management**: View and modify user subscription plans
 - **User Statistics**: Dashboard with user counts and subscription analytics
@@ -34,12 +34,12 @@ A comprehensive goal tracking application built with React, TypeScript, and Goog
 - **No Payment Required**: Admin account is free from all subscription limitations
 
 ### Subscription Plans
-- **Free Plan**: Up to 3 goals
-- **Pro Plan**: Up to 15 goals
-- **Platinum Plan**: Up to 30 goals
-- **Enterprise Plan**: Unlimited goals (contact us for pricing)
+- **Free Plan**: Up to 2 active goals, $0/mo, with advertising
+- **Pro Plan**: Up to 15 active goals, $4.99/mo ($49.90/yr)
+- **Platinum Plan**: Up to 30 active goals, $9.99/mo ($99.90/yr)
+- **Enterprise Plan**: Unlimited active goals (contact us for pricing)
 
-Users are automatically enrolled in the Free plan upon registration. Goal creation is limited based on the user's current subscription plan.
+Users are automatically enrolled in the Free plan upon registration, no card required. Goal creation is limited based on the user's current **active** goal count (completed goals don't count against the limit) and is enforced server-side — see `admin_subscriptions.md` for the full billing/entitlement design.
 
 ## Components
 
@@ -76,53 +76,27 @@ The application consists of several key components:
 
 ### Firestore Security Rules
 
-Set up security rules with user authentication in your Firebase console. The updated rules are available in the `firestore.rules` file:
+Deploy the security rules from the `firestore.rules` file at the repo root
+(`firebase deploy --only firestore:rules`) — do not copy the snippet below,
+it is a summary, not the source of truth:
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    function isAdmin() {
-      return isAuthenticated() && request.auth.token.email == 'admin@admin.com';
-    }
-    
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-    
-    // Goals collection - user-scoped data
-    match /goals/{goalId} {
-      allow read, write: if isAuthenticated() && request.auth.uid == resource.data.userId;
-      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
-    }
-    
-    // Users collection - user profiles and admin management
-    match /users/{userId} {
-      allow read, write: if isOwner(userId);
-      allow read, write: if isAdmin();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-    }
-    
-    // Shared goals collection - public read access for sharing
-    match /sharedGoals/{shareId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
-    }
-  }
-}
-```
+- Users can read their own profile, but can only update allowlisted personal
+  fields; `role` and `subscriptionPlan` cannot be changed by the client at
+  all (they're set only by trusted backend functions).
+- Goals: the owner can read their own goals; **all writes go through the
+  authenticated backend function `mutateGoals`** (see `functions/src/goals/mutateGoals.ts`),
+  which enforces the active-goal limit atomically. Direct client writes to
+  `goals/*` are denied.
+- Trusted admin status comes only from a Firebase custom claim (see
+  `functions/scripts/setAdminClaim.ts`), never from an email address or a
+  Firestore field.
+- Billing, entitlement, usage, and audit-log collections are backend-owned;
+  clients can read their own entitlement/billing summary but never write to
+  any of them directly.
+- Shared goals remain readable/writable by any authenticated user, matching
+  the app's public sharing feature.
 
-**Note**: These rules ensure that:
-- Users can only access their own goals (filtered by `userId`)
-- Users can manage their own profile data
-- Admin users (admin@admin.com) can access all user profiles for management
-- Shared goals are publicly readable for the sharing feature
-- All write operations require authentication
+See `admin_subscriptions.md` for the full data model and rationale.
 
 ### Application Setup
 
@@ -180,9 +154,10 @@ The app is installable as a Progressive Web App and uses a service worker (`publ
 For detailed instructions on setting up the admin user management system and subscription plans, see the [ADMIN_SETUP.md](./ADMIN_SETUP.md) guide.
 
 ### Quick Admin Setup
-1. Register with email `admin@admin.com`
-2. Deploy the Firestore security rules from `firestore.rules`
-3. Access the Admin Dashboard to manage users
+1. Register a normal account and find its Firebase UID
+2. Grant the trusted admin claim: `ADMIN_ACTION_ACTOR_UID=<your-uid> node --experimental-strip-types functions/scripts/setAdminClaim.ts <target-uid> grant "reason"`
+3. Deploy the Firestore security rules from `firestore.rules`
+4. Sign out and back in (or refresh the ID token) so the new claim takes effect, then access the Admin Dashboard
 
 ## Available Scripts
 
