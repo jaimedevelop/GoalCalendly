@@ -51,8 +51,11 @@ const checkAndUpdateTrophies = (goal: Goal): { trophies: number; weeklyTrophies:
     };
     weeklyTrophies = [...weeklyTrophies, currentWeekTrophy];
   } else {
-    currentWeekTrophy.trophies = calculateWeeklyTrophies(goal.weeklyTimeSpent, goal.weeklyGoal);
-    currentWeekTrophy.weeklyTimeSpent = goal.weeklyTimeSpent;
+    currentWeekTrophy = {
+      ...currentWeekTrophy,
+      trophies: calculateWeeklyTrophies(goal.weeklyTimeSpent, goal.weeklyGoal),
+      weeklyTimeSpent: goal.weeklyTimeSpent,
+    };
     weeklyTrophies = weeklyTrophies.map(wt =>
       wt.weekNumber === weekNumber && wt.year === year ? currentWeekTrophy! : wt
     );
@@ -118,7 +121,7 @@ export const useStore = create<Store>((set) => ({
     console.log('[DEBUG] addGoal: New goals array length:', newGoals.length);
     
     // Auto-save to Firestore
-    autoSaveToFirestore(newGoals);
+    autoSaveToFirestore([newGoals[newGoals.length - 1]]);
     
     return { goals: newGoals };
   }),
@@ -129,7 +132,8 @@ export const useStore = create<Store>((set) => ({
       );
       
       // Auto-save to Firestore
-      autoSaveToFirestore(newGoals);
+      const changedGoal = newGoals.find(goal => goal.id === goalId);
+      if (changedGoal) autoSaveToFirestore([changedGoal]);
       
       return { goals: newGoals };
     }),
@@ -191,7 +195,7 @@ export const useStore = create<Store>((set) => ({
       const goals = state.goals.map(goal =>
         goal.id === goalId ? { ...goal, lastTimerStartedAt: startTime } : goal
       );
-      autoSaveToFirestore(goals);
+      autoSaveToFirestore(goals.filter(goal => goal.id === goalId));
       return {
         goals,
         activeTimer: {
@@ -253,7 +257,7 @@ export const useStore = create<Store>((set) => ({
       const newGoals = goals.map((g) => (g.id === goal.id ? updatedGoal : g));
       
       // Auto-save to Firestore
-      autoSaveToFirestore(newGoals);
+      autoSaveToFirestore([updatedGoal]);
       
       return {
         goals: newGoals,
@@ -289,16 +293,16 @@ export const useStore = create<Store>((set) => ({
     
     // Only auto-save if we're setting goals from user actions, not from initial load
     // We can detect this by checking if the goals have been modified (trophy updates)
-    const hasModifications = processedGoals.some((goal, index) =>
+    const modifiedGoals = processedGoals.filter((goal, index) =>
       goals[index] && (
         goal.trophies !== goals[index].trophies ||
-        goal.weeklyTrophies.length !== (goals[index].weeklyTrophies?.length || 0)
+        JSON.stringify(goal.weeklyTrophies) !== JSON.stringify(goals[index].weeklyTrophies || [])
       )
     );
     
-    if (hasModifications) {
+    if (modifiedGoals.length > 0) {
       console.log('📥 [DEBUG] setGoals detected trophy updates, auto-saving to Firestore');
-      autoSaveToFirestore(processedGoals);
+      autoSaveToFirestore(modifiedGoals);
     } else {
       console.log('📥 [DEBUG] setGoals no modifications detected, skipping auto-save');
     }

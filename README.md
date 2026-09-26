@@ -16,6 +16,7 @@ A comprehensive goal tracking application built with React, TypeScript, and Goog
 - Complete goals tracking
 - Multiple view layouts (Top, Double, Three)
 - Starting a timer moves its goal first and scrolls it into view in every layout. Goals stay ordered by their most recent timer start after stopping; this order is saved with the goals. The running clock stays fixed at the bottom right.
+- Timer ticks and taskbar notification updates run locally without database writes. Starting a timer saves only that goal's updated ordering; stopping saves only that goal's completed session totals. Individual goal edits and additions also save only the affected goal. The explicit Save Goals action still saves all goals.
 - **Installable PWA**: Install the app to your home screen/desktop with offline support via a service worker
 - **Background Timer Notifications**: Active timers keep tracking and notify you even when the app is in the background or the phone is locked, including a persistent mobile taskbar/notification-bar indicator
 - Real-time data synchronization with Firestore
