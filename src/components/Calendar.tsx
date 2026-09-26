@@ -8,7 +8,6 @@ import {
   isToday,
   startOfWeek,
   endOfWeek,
-  isSameDay,
 } from 'date-fns';
 
 interface CalendarProps {

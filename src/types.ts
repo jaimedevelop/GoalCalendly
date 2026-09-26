@@ -58,6 +58,7 @@ export interface Goal {
   note?: string;
   completed?: boolean;
   completedDate?: string;
+  lastTimerStartedAt?: number;
   weeklyTrophies: WeeklyTrophy[];
 }
 

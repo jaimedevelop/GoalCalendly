@@ -22,40 +22,44 @@ export const AdvertisingDisplay: React.FC<AdvertisingDisplayProps> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadAdvertisingData();
-  }, []);
+    let cancelled = false;
 
-  const loadAdvertisingData = async () => {
-    try {
-      setLoading(true);
-      const [ways, campaignList] = await Promise.all([
-        getAllAdvertisingWays(),
-        getAllCampaigns()
-      ]);
+    const loadAdvertisingData = async () => {
+      try {
+        setLoading(true);
+        const [ways, campaignList] = await Promise.all([
+          getAllAdvertisingWays(),
+          getAllCampaigns()
+        ]);
 
-      // Filter active advertising ways that match the display method and target location
-      const activeWays = ways.filter(way =>
-        way.isActive &&
-        way.displayMethod === displayMethod &&
-        way.targetLocation === targetLocation
-      );
+        if (cancelled) return;
 
-      // Filter active campaigns
-      const activeCampaigns = campaignList.filter(campaign => campaign.status === 'active');
+        const activeWays = ways.filter(way =>
+          way.isActive &&
+          way.displayMethod === displayMethod &&
+          way.targetLocation === targetLocation
+        );
 
-      setAdvertisingWays(activeWays);
+        const activeCampaigns = campaignList.filter(campaign => campaign.status === 'active');
 
-      // Select a random campaign to display
-      if (activeCampaigns.length > 0) {
-        const randomCampaign = activeCampaigns[Math.floor(Math.random() * activeCampaigns.length)];
-        setCurrentCampaign(randomCampaign);
+        setAdvertisingWays(activeWays);
+
+        if (activeCampaigns.length > 0) {
+          const randomCampaign = activeCampaigns[Math.floor(Math.random() * activeCampaigns.length)];
+          setCurrentCampaign(randomCampaign);
+        }
+      } catch (error) {
+        console.error('Error loading advertising data:', error);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch (error) {
-      console.error('Error loading advertising data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    loadAdvertisingData();
+    return () => {
+      cancelled = true;
+    };
+  }, [displayMethod, targetLocation]);
 
   const handleCampaignClick = () => {
     if (currentCampaign) {

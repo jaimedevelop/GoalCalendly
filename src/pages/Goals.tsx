@@ -21,20 +21,25 @@ export function Goals() {
   const activeGoals = goals
     .filter(g => !g.completed)
     .sort((a, b) => {
-      if (!activeTimer.isRunning || !activeTimer.goalId) return 0;
-      if (a.id === activeTimer.goalId) return -1;
-      if (b.id === activeTimer.goalId) return 1;
-      return 0;
+      if (activeTimer.isRunning && activeTimer.goalId) {
+        if (a.id === activeTimer.goalId) return -1;
+        if (b.id === activeTimer.goalId) return 1;
+      }
+      return (b.lastTimerStartedAt ?? 0) - (a.lastTimerStartedAt ?? 0);
     });
   const importFileRef = useRef<HTMLInputElement>(null);
   const activeGoalRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const firstGoalId = activeGoals[0]?.id;
 
   useEffect(() => {
     if (activeTimer.isRunning && activeTimer.goalId) {
-      activeGoalRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const frame = requestAnimationFrame(() => {
+        activeGoalRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      return () => cancelAnimationFrame(frame);
     }
-  }, [activeTimer.isRunning, activeTimer.goalId]);
+  }, [activeTimer.isRunning, activeTimer.goalId, activeTimer.startTime, viewType, firstGoalId]);
 
   // Check subscription limits
   const currentPlan = user ? SUBSCRIPTION_PLANS[user.subscriptionPlan] : null;

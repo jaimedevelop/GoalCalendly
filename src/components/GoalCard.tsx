@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Timer, Trophy, Medal, Settings, Pencil, Trash2, CalendarIcon } from 'lucide-react';
+import { Timer, Trophy, Settings, Pencil, Trash2, CalendarIcon } from 'lucide-react';
 import { Goal } from '../types';
 import { useStore } from '../store';
-import { formatDistanceToNow, format, startOfWeek, getWeek } from 'date-fns';
+import { formatDistanceToNow, format, getWeek } from 'date-fns';
 import { Calendar } from './Calendar';
 import { SettingsDialog } from './SettingsDialog';
 import { useToast } from '../hooks/useToast';

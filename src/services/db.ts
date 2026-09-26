@@ -104,6 +104,9 @@ export async function saveToFirestore(goals: Goal[]): Promise<boolean> {
       };
       
       // Only include optional fields if they are defined
+      if (goal.lastTimerStartedAt !== undefined) {
+        goalData.lastTimerStartedAt = goal.lastTimerStartedAt;
+      }
       if (goal.completed !== undefined) {
         goalData.completed = goal.completed;
       }
@@ -181,6 +184,7 @@ export async function loadFromFirestore(): Promise<Goal[]> {
         note: data.note,
         completed: data.completed,
         completedDate: data.completedDate,
+        lastTimerStartedAt: data.lastTimerStartedAt,
         weeklyTrophies: data.weeklyTrophies || []
       };
       
@@ -218,6 +222,7 @@ export async function getGoalFromFirestore(goalId: string): Promise<Goal | null>
         note: data.note,
         completed: data.completed,
         completedDate: data.completedDate,
+        lastTimerStartedAt: data.lastTimerStartedAt,
         weeklyTrophies: data.weeklyTrophies || []
       } as Goal;
     }
@@ -299,6 +304,7 @@ export async function getCompletedGoalsFromFirestore(): Promise<Goal[]> {
         note: data.note,
         completed: data.completed,
         completedDate: data.completedDate,
+        lastTimerStartedAt: data.lastTimerStartedAt,
         weeklyTrophies: data.weeklyTrophies || []
       } as Goal);
     });

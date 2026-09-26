@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Goal } from '../types';
-import { Copy, Check, QrCode } from 'lucide-react';
+import { Copy, Check } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { storeSharedGoals } from '../services/db';
 
@@ -12,18 +12,18 @@ interface ShareDialogProps {
 export function ShareDialog({ onClose, goals }: ShareDialogProps) {
   const [copied, setCopied] = useState(false);
   
-  const generateShareUrl = async () => {
+  const generateShareUrl = useCallback(async () => {
     const shareId = crypto.randomUUID();
     await storeSharedGoals(shareId, goals);
     const baseUrl = window.location.origin + window.location.pathname;
     return `${baseUrl}?share=${shareId}`;
-  };
+  }, [goals]);
 
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   
   React.useEffect(() => {
     generateShareUrl().then(setShareUrl);
-  }, [goals]);
+  }, [generateShareUrl]);
 
   const handleCopy = async () => {
     if (!shareUrl) return;

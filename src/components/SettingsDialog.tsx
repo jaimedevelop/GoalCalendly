@@ -16,11 +16,14 @@ export function SettingsDialog({ goal, onClose, onUpdate }: SettingsDialogProps)
     completed: false
   });
 
-  const handleSettingsChange = (key: keyof GoalSettings, value: any) => {
+  const handleSettingsChange = <K extends keyof GoalSettings>(key: K, value: GoalSettings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleTargetChange = (key: keyof typeof settings.target, value: any) => {
+  const handleTargetChange = <K extends keyof GoalSettings['target']>(
+    key: K,
+    value: GoalSettings['target'][K]
+  ) => {
     setSettings(prev => ({
       ...prev,
       target: { ...prev.target, [key]: value }
@@ -86,7 +89,7 @@ export function SettingsDialog({ goal, onClose, onUpdate }: SettingsDialogProps)
             <h3 className="text-lg font-semibold">Tracking Frequency</h3>
             <select
               value={settings.frequency}
-              onChange={(e) => handleSettingsChange('frequency', e.target.value)}
+              onChange={(e) => handleSettingsChange('frequency', e.target.value as GoalSettings['frequency'])}
               className="w-full p-2 border rounded-md"
             >
               <option value="daily">Daily</option>
@@ -101,7 +104,7 @@ export function SettingsDialog({ goal, onClose, onUpdate }: SettingsDialogProps)
             <div className="flex gap-4">
               <select
                 value={settings.target.type}
-                onChange={(e) => handleTargetChange('type', e.target.value)}
+                onChange={(e) => handleTargetChange('type', e.target.value as GoalSettings['target']['type'])}
                 className="w-1/2 p-2 border rounded-md"
               >
                 <option value="hours">Hours</option>

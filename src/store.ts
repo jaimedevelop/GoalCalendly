@@ -185,13 +185,22 @@ export const useStore = create<Store>((set) => ({
     });
   },
   startTimer: (goalId) =>
-    set({
-      activeTimer: {
-        goalId,
-        isRunning: true,
-        startTime: Date.now(),
-        elapsedTime: 0,
-      },
+    set((state) => {
+      if (!state.goals.some(goal => goal.id === goalId && !goal.completed)) return state;
+      const startTime = Date.now();
+      const goals = state.goals.map(goal =>
+        goal.id === goalId ? { ...goal, lastTimerStartedAt: startTime } : goal
+      );
+      autoSaveToFirestore(goals);
+      return {
+        goals,
+        activeTimer: {
+          goalId,
+          isRunning: true,
+          startTime,
+          elapsedTime: 0,
+        },
+      };
     }),
   stopTimer: () =>
     set((state) => {

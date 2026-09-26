@@ -29,15 +29,16 @@ export function ActiveTimer() {
       setNotificationPermission(timerNotificationService.getPermissionStatus());
     }
 
-    // Listen for service worker messages
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data.type === 'STOP_TIMER') {
-          stopTimer();
-        }
-      });
-    }
-  }, []);
+    if (!('serviceWorker' in navigator)) return;
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'STOP_TIMER') {
+        stopTimer();
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [stopTimer]);
 
   useEffect(() => {
     // Show notification prompt when timer starts
