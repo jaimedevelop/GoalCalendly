@@ -16,6 +16,8 @@ A comprehensive goal tracking application built with React, TypeScript, and Goog
 - Complete goals tracking
 - Multiple view layouts (Top, Double, Three)
 - Starting a timer moves its goal first and scrolls it into view in every layout. Goals stay ordered by their most recent timer start after stopping; this order is saved with the goals. The running clock stays fixed at the bottom right.
+- **Installable PWA**: Install the app to your home screen/desktop with offline support via a service worker
+- **Background Timer Notifications**: Active timers keep tracking and notify you even when the app is in the background or the phone is locked, including a persistent mobile taskbar/notification-bar indicator
 - Real-time data synchronization with Firestore
 - Secure cloud storage with user data isolation
 - **Goal Limits**: Subscription-based limits on the number of goals users can create
@@ -164,6 +166,13 @@ The Firestore database contains the following collections:
 - **sharedGoals**: Collection for shared goal data
   - Properties: id, goals, timestamp, expiresAt
   - Used for persistent goal sharing
+
+## PWA and Notifications
+
+The app is installable as a Progressive Web App and uses a service worker (`public/sw.js`) for offline caching and background timer notifications.
+
+- See [PWA_NOTIFICATION_GUIDE.md](./PWA_NOTIFICATION_GUIDE.md) for details on the notification setup and mobile taskbar/active-timer behavior.
+- Manifest and icons live in `public/manifest.json` and `public/icon-*.svg`.
 
 ## Admin and Subscription Setup
 
