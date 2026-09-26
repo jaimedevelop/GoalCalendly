@@ -11,6 +11,7 @@ import { Header } from './components/Header';
 import { Toaster } from './components/ui/toaster';
 import AdminDashboard from './components/AdminDashboard';
 import SubscriptionPlan from './components/SubscriptionPlan';
+import { BillingReturn } from './pages/BillingReturn';
 import { AdvertisingManager } from './components/AdvertisingManager';
 import PWAInstallPrompt from './components/PWAInstallPrompt.tsx';
 import { useStore } from './store';
@@ -103,6 +104,7 @@ function App() {
                   path="/subscription"
                   element={<SubscriptionPlan user={user} currentGoalCount={activeGoalCount} />}
                 />
+                <Route path="/billing/return" element={<BillingReturn />} />
                 {user.isTrustedAdmin && (
                   <Route path="/admin" element={<AdminDashboard />} />
                 )}

@@ -121,6 +121,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Checkout session reservations (createCheckoutSession.ts's duplicate-
+    // request guard) — backend-only.
+    match /checkoutReservations/{reservationId} {
+      allow read, write: if false;
+    }
+
     // Deny all other access.
     match /{document=**} {
       allow read, write: if false;

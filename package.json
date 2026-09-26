@@ -18,7 +18,11 @@
     "emulators": "firebase emulators:start --only functions,firestore,auth",
     "functions:test:manual-ping": "node functions/tests/ping.manual.mjs",
     "test:rules": "node --test tests/firestore.rules.test.mjs",
-    "test:goal-limits": "node --test functions/tests/goalLimits.test.mjs"
+    "test:goal-limits": "node --test functions/tests/goalLimits.test.mjs",
+    "test:webhook": "node --test functions/tests/stripeWebhook.test.mjs",
+    "test:reconcile": "node --test functions/tests/reconcileSubscriptions.test.mjs",
+    "test:checkout-portal": "node --test functions/tests/checkoutAndPortal.test.mjs",
+    "test:emulator-suite": "node --test --test-concurrency=1 tests/firestore.rules.test.mjs functions/tests/goalLimits.test.mjs functions/tests/stripeWebhook.test.mjs functions/tests/reconcileSubscriptions.test.mjs functions/tests/checkoutAndPortal.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Calendar, Target, Trophy, Timer, Users, Star, Gem, Building, Check, ArrowRight } from 'lucide-react';
 import { SUBSCRIPTION_PLANS } from '../types';
+import { ENTERPRISE_CONTACT_EMAIL } from '../../shared/subscriptionPlans.js';
 
 export function Landing() {
   return (
@@ -199,16 +200,25 @@ export function Landing() {
                         {getPlanPrice()}
                       </span>
                     </p>
-                    <Link
-                      to="/signup"
-                      className={`mt-8 block w-full border border-gray-800 rounded-md py-2 text-sm font-semibold text-center transition-colors ${
-                        isPopular 
-                          ? 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600' 
-                          : 'text-gray-800 hover:bg-gray-50'
-                      }`}
-                    >
-                      {planType === 'enterprise' ? 'Contact Sales' : 'Get Started'}
-                    </Link>
+                    {planType === 'enterprise' ? (
+                      <a
+                        href={`mailto:${ENTERPRISE_CONTACT_EMAIL}?subject=Goal%20Calendly%20Enterprise`}
+                        className="mt-8 block w-full border border-gray-800 rounded-md py-2 text-sm font-semibold text-center transition-colors text-gray-800 hover:bg-gray-50"
+                      >
+                        Contact Sales
+                      </a>
+                    ) : (
+                      <Link
+                        to="/signup"
+                        className={`mt-8 block w-full border border-gray-800 rounded-md py-2 text-sm font-semibold text-center transition-colors ${
+                          isPopular
+                            ? 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600'
+                            : 'text-gray-800 hover:bg-gray-50'
+                        }`}
+                      >
+                        Get Started
+                      </Link>
+                    )}
                   </div>
                   <div className="pt-6 pb-8 px-6">
                     <h4 className="text-xs font-medium text-gray-900 tracking-wide uppercase">

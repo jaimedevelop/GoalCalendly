@@ -41,3 +41,22 @@ export function resolvePriceId(plan: 'pro' | 'platinum', interval: BillingInterv
   }
   return priceId;
 }
+
+/**
+ * Reverse lookup: given a Stripe Price ID observed on a subscription (from a
+ * webhook event or reconciliation), resolves which app plan/interval it
+ * corresponds to. Returns null for an unrecognized Price ID (e.g. an
+ * Enterprise custom price, or a stale Price from a previous provisioning) —
+ * callers must handle that case rather than assume every subscription maps
+ * to a known plan.
+ */
+export function planFromPriceId(priceId: string): { plan: 'pro' | 'platinum'; interval: BillingInterval } | null {
+  for (const plan of Object.keys(PRICE_ENV_VARS) as ('pro' | 'platinum')[]) {
+    for (const interval of ['month', 'year'] as BillingInterval[]) {
+      if (process.env[PRICE_ENV_VARS[plan][interval]] === priceId) {
+        return { plan, interval };
+      }
+    }
+  }
+  return null;
+}

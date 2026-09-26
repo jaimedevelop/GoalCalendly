@@ -9,6 +9,10 @@ import { requireAuth } from './lib/firebaseAdmin.js';
 
 export { createFreeProfile, updateOwnProfile, grantComplimentaryAccess } from './admin/manageAccess.js';
 export { mutateGoals } from './goals/mutateGoals.js';
+export { stripeWebhook } from './billing/stripeWebhook.js';
+export { reconcileSubscriptionsScheduled, reconcileOneCustomer } from './billing/reconcileSubscriptions.js';
+export { createCheckoutSession } from './billing/createCheckoutSession.js';
+export { createPortalSession } from './billing/createPortalSession.js';
 
 /**
  * Protected test endpoint for Step 2's completion check: an unauthenticated

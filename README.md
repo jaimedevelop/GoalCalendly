@@ -155,7 +155,7 @@ For detailed instructions on setting up the admin user management system and sub
 
 ### Quick Admin Setup
 1. Register a normal account and find its Firebase UID
-2. Grant the trusted admin claim: `ADMIN_ACTION_ACTOR_UID=<your-uid> node --experimental-strip-types functions/scripts/setAdminClaim.ts <target-uid> grant "reason"`
+2. Grant the trusted admin claim (from `functions/`): `ADMIN_ACTION_ACTOR_UID=<your-uid> npx tsx scripts/setAdminClaim.ts <target-uid> grant "reason"`
 3. Deploy the Firestore security rules from `firestore.rules`
 4. Sign out and back in (or refresh the ID token) so the new claim takes effect, then access the Admin Dashboard
 

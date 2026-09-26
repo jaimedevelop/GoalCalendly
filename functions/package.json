@@ -12,10 +12,10 @@
     "build:watch": "tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions,firestore,auth",
     "shell": "npm run build && firebase functions:shell",
-    "test": "node --test --experimental-strip-types tests/**/*.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "lint": "eslint .",
-    "stripe:provision": "node --experimental-strip-types scripts/provisionStripe.ts",
-    "stripe:verify": "node --experimental-strip-types scripts/verifyStripeConfig.ts"
+    "stripe:provision": "tsx scripts/provisionStripe.ts",
+    "stripe:verify": "tsx scripts/verifyStripeConfig.ts"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "tsx": "^4.23.15",
     "typescript": "^5.5.3"
   }
 }

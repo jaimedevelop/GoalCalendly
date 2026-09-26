@@ -60,6 +60,34 @@ active. Add `APP_ORIGIN=https://...` once a webhook endpoint is deployed
 every mismatch listed if anything is wrong — resolve all of them before
 enabling Checkout.
 
+## Testing Checkout and Portal end to end (step 7)
+
+The automated test suite (`npm run test:emulator-suite`) runs with
+`CHECKOUT_ENABLED=false` and a placeholder `STRIPE_SECRET_KEY`, so it only
+verifies the disabled-switch/validation/auth paths, never touching real
+Stripe. To verify an actual test-mode Checkout Session and Portal Session,
+run the emulator with a real sandbox key and Checkout enabled just for this:
+
+```bash
+# from the repo root
+STRIPE_SECRET_KEY=rk_test_... firebase emulators:start --only functions,firestore,auth --project demo-goalcalendly
+```
+
+with `functions/.env.demo-goalcalendly`'s `CHECKOUT_ENABLED` set to `true`
+and `APP_ORIGIN` set to your local dev server (e.g. `http://localhost:5177`)
+for that session, then in another terminal:
+
+```bash
+node functions/tests/checkoutEnabled.manual.mjs
+```
+
+This proves: a real `https://checkout.stripe.com/...` URL is returned, a
+repeated `requestId` returns the identical pending session (no duplicate
+Checkout Session or Stripe Customer), and Manage billing resolves to a real
+`https://billing.stripe.com/...` URL for the correct customer once one
+exists. Revert `CHECKOUT_ENABLED` to `false` afterward — it should stay off
+until the step 11 production cutover checks pass.
+
 ## Live provisioning (step 11 only)
 
 Repeat both commands with `--env live` and a live restricted key, only

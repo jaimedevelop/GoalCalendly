@@ -27,6 +27,13 @@ firestore-debug.log
 firebase-export-*/
 functions/lib/
 functions/.env
+# Guard against a stray `tsc` invocation emitting compiled output directly
+# into shared/ instead of functions/lib/shared/ (happened once — see step 7
+# progress log). shared/*.ts is the only source of truth here.
+shared/*.js
+shared/*.js.map
+functions/.env.*
+!functions/.env.example
 
 # Stripe resource inventories are non-secret but environment-specific
 # generated output — review before committing rather than auto-tracking.
