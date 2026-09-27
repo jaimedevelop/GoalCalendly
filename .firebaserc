@@ -1,5 +1,24 @@
 {
   "projects": {
-    "default": "REPLACE_WITH_STAGING_PROJECT_ID"
-  }
+    "default": "goal-calendly",
+    "staging": "goal-calendly-staging",
+    "production": "goal-calendly"
+  },
+  "targets": {
+    "goal-calendly": {
+      "hosting": {
+        "production": [
+          "goal-calendly"
+        ]
+      }
+    },
+    "goal-calendly-staging": {
+      "hosting": {
+        "staging": [
+          "goal-calendly-staging"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

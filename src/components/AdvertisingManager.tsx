@@ -1,23 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import { AdvertisingDisplay } from './AdvertisingDisplay';
-import { useStore } from '../store';
+import { useStore, shouldShowAds } from '../store';
 
 interface AdvertisingManagerProps {
   children: React.ReactNode;
 }
 
 export const AdvertisingManager: React.FC<AdvertisingManagerProps> = ({ children }) => {
-  const { user } = useStore();
+  const { entitlement, isEntitlementLoading, activeTimer } = useStore();
   const [showModal, setShowModal] = useState(false);
   const [modalShown, setModalShown] = useState(false);
 
-  // Check if user is free tier (not admin and has free subscription)
-  const isFreeUser = user && user.subscriptionPlan === 'free' && !user.isTrustedAdmin;
+  // Ad eligibility comes from the live, server-verified entitlement (never
+  // the raw Firestore subscriptionPlan field, and never true while the
+  // entitlement is still loading) — see shouldShowAds in store.ts and
+  // admin_subscriptions.md section 7: paid access must hide ads immediately,
+  // not only after the next sign-in.
+  const showAds = shouldShowAds(entitlement, isEntitlementLoading);
 
   // Show modal popup for milestone-based advertising (simulate goal completion)
   useEffect(() => {
-    if (isFreeUser && !modalShown) {
-      // Show modal after 5 seconds for demo purposes
+    if (showAds && !modalShown && !activeTimer.isRunning) {
+      // Show modal after 5 seconds for demo purposes. Never interrupt a
+      // running timer (admin_subscriptions.md section 3/7) — if a timer
+      // starts before this fires, the cleanup below cancels it, and it is
+      // not rescheduled until modalShown is reset (i.e. never automatically
+      // retried mid-session, so it can't pop up right as a timer starts either).
       const timer = setTimeout(() => {
         setShowModal(true);
         setModalShown(true);
@@ -25,11 +33,15 @@ export const AdvertisingManager: React.FC<AdvertisingManagerProps> = ({ children
 
       return () => clearTimeout(timer);
     }
-  }, [isFreeUser, modalShown]);
+  }, [showAds, modalShown, activeTimer.isRunning]);
 
-  if (!isFreeUser) {
+  if (!showAds) {
     return <>{children}</>;
   }
+
+  // Never show the modal while a timer is running, even if it was already
+  // scheduled to appear in this render pass.
+  const modalVisible = showModal && !activeTimer.isRunning;
 
   return (
     <>
@@ -63,8 +75,8 @@ export const AdvertisingManager: React.FC<AdvertisingManagerProps> = ({ children
         </div>
       </div>
 
-      {/* Modal Advertisement */}
-      {showModal && (
+      {/* Modal Advertisement — never rendered while a timer is running */}
+      {modalVisible && (
         <AdvertisingDisplay
           displayMethod="modal"
           targetLocation="goal-completion"

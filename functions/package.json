@@ -15,12 +15,13 @@
     "test": "tsx --test tests/*.test.ts",
     "lint": "eslint .",
     "stripe:provision": "tsx scripts/provisionStripe.ts",
-    "stripe:verify": "tsx scripts/verifyStripeConfig.ts"
+    "stripe:verify": "tsx scripts/verifyStripeConfig.ts",
+    "migrate:subscriptions": "tsx scripts/migrateSubscriptions.ts"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
     "firebase-functions": "^6.1.0",
-    "stripe": "^17.4.0"
+    "stripe": "^22.6.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

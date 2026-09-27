@@ -43,12 +43,19 @@ export function Goals() {
     }
   }, [activeTimer.isRunning, activeTimer.goalId, activeTimer.startTime, viewType, firstGoalId]);
 
-  // Check subscription limits
-  const currentPlan = user ? SUBSCRIPTION_PLANS[user.subscriptionPlan] : null;
+  // Check subscription limits from the live, server-verified entitlement
+  // rather than the raw Firestore subscriptionPlan field, so a plan change
+  // (upgrade or admin grant) is reflected immediately, not just after the
+  // next sign-in. Falls back to the legacy field's limit only while the
+  // entitlement hasn't loaded yet, to avoid flashing "at limit" incorrectly.
+  const { entitlement, isEntitlementLoading } = useStore();
+  const fallbackPlan = user ? SUBSCRIPTION_PLANS[user.subscriptionPlan] : null;
+  const maxGoals = !isEntitlementLoading && entitlement ? entitlement.maxActiveGoals : fallbackPlan?.maxGoals ?? -1;
+  const planLabel = !isEntitlementLoading && entitlement ? entitlement.plan : user?.subscriptionPlan;
   // Admin users have unlimited goals
   const isAdmin = user?.isTrustedAdmin ?? false;
-  const canAddGoal = isAdmin || (currentPlan ? (currentPlan.maxGoals === -1 || activeGoals.length < currentPlan.maxGoals) : false);
-  const isAtLimit = !isAdmin && currentPlan ? (currentPlan.maxGoals !== -1 && activeGoals.length >= currentPlan.maxGoals) : false;
+  const canAddGoal = isAdmin || maxGoals === -1 || activeGoals.length < maxGoals;
+  const isAtLimit = !isAdmin && maxGoals !== -1 && activeGoals.length >= maxGoals;
 
   // Goals are loaded once app-wide on sign-in (see App.tsx) so every route
   // sees an accurate active-goal count; this effect only handles the
@@ -185,7 +192,7 @@ export function Goals() {
               if (canAddGoal) {
                 setShowNewGoal(true);
               } else {
-                alert(`You've reached your goal limit (${currentPlan?.maxGoals}). Upgrade your plan to create more goals.`);
+                alert(`You've reached your goal limit (${maxGoals}). Upgrade your plan to create more goals.`);
                 navigate('/subscription');
               }
             }}
@@ -194,7 +201,7 @@ export function Goals() {
                 ? 'bg-blue-500 text-white hover:bg-blue-600'
                 : 'bg-gray-400 text-white cursor-not-allowed'
             }`}
-            title={isAtLimit ? `Goal limit reached (${currentPlan?.maxGoals})` : 'Add new goal'}
+            title={isAtLimit ? `Goal limit reached (${maxGoals})` : 'Add new goal'}
           >
             <Plus className="w-5 h-5" />
             <span>Goal</span>
@@ -290,7 +297,7 @@ export function Goals() {
                   Goal Limit Reached
                 </h3>
                 <p className="text-sm text-yellow-700 mt-1">
-                  You've reached your {user?.subscriptionPlan} plan limit of {currentPlan?.maxGoals} goals.
+                  You've reached your {planLabel} plan limit of {maxGoals} goals.
                   <button
                     onClick={() => navigate('/subscription')}
                     className="ml-1 underline hover:no-underline font-medium"

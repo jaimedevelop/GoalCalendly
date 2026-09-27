@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Star, Gem, Building, Users, Check, ArrowLeft, Loader2 } from 'lucide-react';
+import { Star, Gem, Building, Users, Check, ArrowLeft, Loader2, AlertTriangle } from 'lucide-react';
 import { SubscriptionPlan, SUBSCRIPTION_PLANS } from '../types.js';
 import { SUBSCRIPTION_PLANS as SHARED_SUBSCRIPTION_PLANS, ENTERPRISE_CONTACT_EMAIL } from '../../shared/subscriptionPlans.js';
 import { AuthUser } from '../services/auth.js';
 import { startCheckout, openBillingPortal } from '../services/billing.js';
 import { useSubscription } from '../hooks/useSubscription.js';
+import { useBillingSummary } from '../hooks/useBillingSummary.js';
 import type { BillingInterval } from '../../shared/subscriptionPlans.js';
 
 interface SubscriptionPlanProps {
@@ -15,17 +16,26 @@ interface SubscriptionPlanProps {
 
 const SubscriptionPlanComponent: React.FC<SubscriptionPlanProps> = ({ user, currentGoalCount }) => {
   const navigate = useNavigate();
-  const currentPlan = SUBSCRIPTION_PLANS[user.subscriptionPlan];
   const isAdmin = user.isTrustedAdmin;
+
+  const { entitlement, isLoading: isEntitlementLoading } = useSubscription(user.uid);
+  // Live, server-verified plan drives every display below — the raw
+  // Firestore subscriptionPlan field only reflects billing changes after a
+  // fresh sign-in, so it's used purely as a loading-state fallback here
+  // (admin_subscriptions.md section 7/8: labels must update without signing
+  // out). Admins always effectively see 'enterprise'/unlimited regardless.
+  const displayPlan: SubscriptionPlan = !isEntitlementLoading && entitlement ? entitlement.plan : user.subscriptionPlan;
+  const currentPlan = SUBSCRIPTION_PLANS[displayPlan];
   const isAtLimit = !isAdmin && currentPlan.maxGoals !== -1 && currentGoalCount >= currentPlan.maxGoals;
 
-  const { entitlement } = useSubscription(user.uid);
   const [interval, setIntervalChoice] = useState<BillingInterval>('month');
   const [pendingPlan, setPendingPlan] = useState<'pro' | 'platinum' | null>(null);
   const [portalPending, setPortalPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const hasPaidBillingRecord = entitlement?.source === 'stripe';
+  const { summary: billingSummary } = useBillingSummary(user.uid);
+  const isPastDue = billingSummary?.status === 'past_due';
 
   const getPlanIcon = (plan: SubscriptionPlan) => {
     switch (plan) {
@@ -96,12 +106,12 @@ const SubscriptionPlanComponent: React.FC<SubscriptionPlanProps> = ({ user, curr
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg border ${getPlanColor(user.subscriptionPlan)}`}>
-            {getPlanIcon(user.subscriptionPlan)}
+          <div className={`p-2 rounded-lg border ${getPlanColor(displayPlan)}`}>
+            {getPlanIcon(displayPlan)}
           </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-900">
-              {getPlanName(user.subscriptionPlan)} Plan
+              {getPlanName(displayPlan)} Plan
             </h3>
             <p className="text-sm text-gray-500">Your current subscription</p>
           </div>
@@ -126,6 +136,31 @@ const SubscriptionPlanComponent: React.FC<SubscriptionPlanProps> = ({ user, curr
       {entitlement?.source === 'complimentary' && (
         <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-3 text-sm text-purple-800">
           This access is a complimentary grant, not a paid subscription{entitlement.expiresAt ? ` — expires ${new Date(entitlement.expiresAt).toLocaleDateString()}` : ''}.
+        </div>
+      )}
+
+      {isPastDue && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">Your last payment didn't go through.</p>
+            <p className="mt-0.5">
+              Your access continues for now
+              {billingSummary?.gracePeriodEndsAt
+                ? ` — please update your payment method by ${new Date(billingSummary.gracePeriodEndsAt).toLocaleDateString()} to avoid losing paid access.`
+                : '. Please update your payment method to avoid losing paid access.'}
+              {' '}
+              <button onClick={handleManageBilling} className="underline hover:no-underline font-medium">
+                Update payment method
+              </button>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!isPastDue && billingSummary?.cancelAtPeriodEnd && billingSummary.paidThroughDate && (
+        <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-700">
+          Your subscription is set to cancel on {new Date(billingSummary.paidThroughDate).toLocaleDateString()}. You'll keep your current plan's access until then.
         </div>
       )}
 
@@ -176,7 +211,7 @@ const SubscriptionPlanComponent: React.FC<SubscriptionPlanProps> = ({ user, curr
       </div>
 
       {/* Upgrade Options */}
-      {!isAdmin && user.subscriptionPlan !== 'enterprise' && (
+      {!isAdmin && displayPlan !== 'enterprise' && (
         <div className="mt-6 pt-6 border-t border-gray-200">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-medium text-gray-700">Available Plans</h4>
@@ -198,7 +233,7 @@ const SubscriptionPlanComponent: React.FC<SubscriptionPlanProps> = ({ user, curr
           <div className="grid grid-cols-1 gap-3">
             {Object.entries(SUBSCRIPTION_PLANS).map(([planKey, plan]) => {
               const planType = planKey as SubscriptionPlan;
-              if (planType === user.subscriptionPlan) return null;
+              if (planType === displayPlan) return null;
 
               const isPurchasable = planType === 'pro' || planType === 'platinum';
               const price = isPurchasable ? priceForInterval(planType) : null;

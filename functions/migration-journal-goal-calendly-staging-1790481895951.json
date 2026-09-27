@@ -1,0 +1,33 @@
+{
+  "projectId": "goal-calendly-staging",
+  "mode": "apply",
+  "totalUsers": 3,
+  "actionCounts": {
+    "backfill-usage": 2,
+    "backfill-entitlement": 1,
+    "migrate-legacy-paid-plan": 1
+  },
+  "actions": [
+    {
+      "uid": "seed_legacy_free_3goals",
+      "type": "backfill-usage",
+      "detail": "missing -> 3"
+    },
+    {
+      "uid": "seed_legacy_free_3goals",
+      "type": "backfill-entitlement",
+      "detail": "free"
+    },
+    {
+      "uid": "seed_legacy_manual_pro",
+      "type": "backfill-usage",
+      "detail": "missing -> 1"
+    },
+    {
+      "uid": "seed_legacy_manual_pro",
+      "type": "migrate-legacy-paid-plan",
+      "detail": "pro -> complimentary grant (expires 2026-10-27T04:04:57.927Z)"
+    }
+  ],
+  "ranAt": "2026-09-27T04:04:58.197Z"
+}

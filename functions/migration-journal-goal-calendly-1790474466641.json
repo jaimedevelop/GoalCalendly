@@ -1,0 +1,32 @@
+{
+  "projectId": "goal-calendly",
+  "mode": "dry-run",
+  "totalUsers": 2,
+  "actionCounts": {
+    "backfill-usage": 2,
+    "backfill-entitlement": 2
+  },
+  "actions": [
+    {
+      "uid": "AAxkmISCU6c9L24iQ4kbe54XoKq2",
+      "type": "backfill-usage",
+      "detail": "missing -> 9"
+    },
+    {
+      "uid": "AAxkmISCU6c9L24iQ4kbe54XoKq2",
+      "type": "backfill-entitlement",
+      "detail": "admin"
+    },
+    {
+      "uid": "fCxL1FKr12VTttwqgfORg3b0iym1",
+      "type": "backfill-usage",
+      "detail": "missing -> 3"
+    },
+    {
+      "uid": "fCxL1FKr12VTttwqgfORg3b0iym1",
+      "type": "backfill-entitlement",
+      "detail": "free"
+    }
+  ],
+  "ranAt": "2026-09-27T02:01:08.113Z"
+}

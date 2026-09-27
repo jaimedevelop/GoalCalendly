@@ -1,67 +1,148 @@
 # Admin and Subscription Setup Guide
 
-This guide covers the setup and configuration of the admin user management system and subscription plans for the Goal Calendly application.
+This guide covers admin provisioning and subscription/billing for Goal
+Calendly. See `admin_subscriptions.md` for the full plan and roadmap, and
+`STRIPE_SETUP.md` for Stripe-specific setup.
 
 ## Overview
 
-The application now includes:
-- **Admin Dashboard**: User management interface for administrators
-- **Subscription Plans**: Four tiers with different goal limits
-- **User Profiles**: Firestore-based user management system
-- **Role-based Access**: Admin-only features and user data isolation
+- **Admin access**: granted via a Firebase Auth custom claim, never an email
+  address. There is no special "admin" email — any account can be granted
+  admin by a developer running a provisioning script.
+- **Subscription plans**: Free, Pro, Platinum, Enterprise, defined once in
+  `shared/subscriptionPlans.ts` and consumed by both the frontend and backend.
+- **Entitlements**: a user's actual access (plan, goal limit, ad eligibility)
+  is computed and stored server-side in `entitlements/{uid}`, never trusted
+  from the client. See `functions/src/lib/entitlements.ts`.
+- **Goal writes**: go through the authenticated backend function `mutateGoals`
+  (`functions/src/goals/mutateGoals.ts`), which enforces the active-goal limit
+  atomically. Direct client writes to the `goals` collection are denied by
+  `firestore.rules`.
 
 ## Admin Account Setup
 
-### 1. Create Admin Account
+### 1. Grant the admin claim
 
-The admin account is automatically assigned admin privileges based on the email address:
+There is no admin registration flow — grant the claim to an existing
+account's Firebase UID:
 
-- **Admin Email**: `admin@admin.com`
-- **Password**: Set any secure password during registration
-- **Role**: Automatically assigned `admin` role upon first login
+```bash
+# from functions/, after `npm run build`
+ADMIN_ACTION_ACTOR_UID=<your-own-uid> npx tsx scripts/setAdminClaim.ts <target-uid> grant "reason"
+```
 
-### 2. Admin Features
+This requires Application Default Credentials for the target Firebase
+project (e.g. `gcloud auth application-default login`), or can be run inside
+`firebase functions:shell` against the emulator. It does **not** require a
+downloaded service-account key for normal use. Every grant/revoke is
+recorded in `adminAuditLogs` with the actor UID, target UID, and reason.
 
-Once logged in as admin, you'll have access to:
+### 2. Refresh the client
 
-- **User Management Dashboard**: View all registered users
-- **User Statistics**: Total users, subscription distribution
-- **User Actions**: Delete users, modify subscription plans
-- **Admin Navigation**: Special admin menu items
-- **Unlimited Goals**: Admin users can create unlimited goals without subscription restrictions
-- **No Payment Required**: Admin account is free from all subscription limitations
+Firebase ID tokens cache custom claims for their lifetime. After granting
+the claim, the affected user must sign out and back in (or the app must
+force a token refresh) before `AuthUser.isTrustedAdmin` reflects it — see
+`src/services/auth.ts`'s `readTrustedAdminClaim`.
 
-### 3. Accessing Admin Dashboard
+### 3. Admin capabilities
 
-1. Register or login with `admin@admin.com`
-2. Navigate to the Admin Dashboard via the navigation menu
-3. View and manage all users in the system
+Once `isTrustedAdmin` is true:
+
+- **Admin Dashboard** (`/admin`): view all users, see aggregate goal counts,
+  and issue audited complimentary-access grants.
+- **Unlimited, ad-free access**: computed by `computeEffectiveEntitlement`
+  with `source: 'admin'`, overriding any billing state or complimentary
+  grant.
+- Admin status is never derived from `role` in a user's Firestore profile —
+  that field is a legacy display value only (see the Security Rules section
+  below) and cannot itself grant privileges.
+
+## Managing Individual Accounts
+
+The Admin Dashboard's User Management tab now shows **Billed Plan** (the raw
+`subscriptionPlan` field, kept for reference) separately from **Effective
+Access** (the live, server-computed entitlement — plan, source, and any
+expiry). All actions are audited:
+
+- **Grant/revoke complimentary access**: use the dashboard's "Grant access"
+  button, or call `grantComplimentaryAccess`/`revokeComplimentaryAccess`
+  directly. Always requires a reason; never evidence of payment.
+- **Deactivate/reactivate**: does not touch billing — a deactivated user's
+  subscription keeps running until cancelled through the normal billing flow.
+- **Delete**: refuses outright if the target has a live (active/past_due/
+  trialing) subscription unless you explicitly acknowledge that deleting the
+  profile will **not** cancel the Stripe subscription — that must be done
+  separately (Stripe Dashboard or the billing support workflow). Billing,
+  entitlement, and audit records are preserved after deletion so a
+  since-deleted account's history remains reviewable.
+
+## Migrating Legacy Data
+
+If accounts existed before billing/entitlement tracking was added (manually
+assigned paid plans, or goals created before the active-goal usage counter
+existed), run the dry-run-first migration script:
+
+```bash
+# from functions/, after npm run build
+tsx scripts/migrateSubscriptions.ts --env <project-id> --dry-run
+```
+
+Review the printed summary and the full JSON journal it writes, then apply:
+
+```bash
+tsx scripts/migrateSubscriptions.ts --env <project-id> --apply --expiry-days 30 --reason "legacy plan migration"
+```
+
+`--expiry-days` is required with `--apply` (use `0` for a reviewed permanent
+grant) so a legacy paid plan is never silently granted for free indefinitely
+by omission. The script:
+
+1. Backfills `usage/{uid}.activeGoalCount` from actual goal documents.
+2. Converts any `subscriptionPlan !== 'free'` with no real Stripe billing
+   record into an explicit, audited complimentary grant — never continues
+   to trust the raw field as if it were a paid subscription.
+3. Backfills a missing `entitlements/{uid}` document for anyone who doesn't
+   have one yet.
+
+Safe to re-run: already-migrated users (those with a usage doc, an
+entitlement doc, and — if paid — a real billing or complimentary-grant
+record) are skipped, so re-running does not duplicate grants or overwrite
+newer state. Verified by `functions/tests/migrateSubscriptions.test.mjs`.
 
 ## Subscription Plans
 
 ### Plan Tiers
 
-| Plan | Goal Limit | Features |
-|------|------------|----------|
-| **Free** | 3 goals | Basic goal tracking |
-| **Pro** | 15 goals | Enhanced features |
-| **Platinum** | 30 goals | Premium features |
-| **Enterprise** | Unlimited | Contact for pricing |
+Defined in `shared/subscriptionPlans.ts` (the single source of truth — check
+that file for current values rather than trusting this table if it drifts):
+
+| Plan | Active Goal Limit | Monthly Price | Advertising |
+|------|------|------|------|
+| **Free** | 2 | $0 | Yes |
+| **Pro** | 15 | $4.99 | No |
+| **Platinum** | 30 | $9.99 | No |
+| **Enterprise** | Unlimited | Custom (contact sales) | No |
+
+"Active" goals are those with `completed !== true`; completed goals never
+count against the limit.
 
 ### Default Behavior
 
-- **New Users**: Automatically enrolled in Free plan
-- **Goal Limits**: Enforced during goal creation
-- **Upgrade Path**: Users can view upgrade options (implementation pending)
+- **New users**: created with `role: 'user'`, `subscriptionPlan: 'free'`,
+  forced server-side by `createFreeProfile` — the client cannot request a
+  different starting role or plan.
+- **Goal limits**: enforced atomically by the `mutateGoals` backend
+  transaction on every create/import/duplicate/reopen, not just in the UI.
+- **Upgrades**: real Stripe Checkout, wired up via `SubscriptionPlan.tsx` and
+  `functions/src/billing/createCheckoutSession.ts`. See `STRIPE_SETUP.md`.
 
 ### Plan Management
 
-Admins can modify user subscription plans through the Admin Dashboard:
-
-1. Navigate to Admin Dashboard
-2. Find the user in the user list
-3. Use the subscription dropdown to change plans
-4. Changes take effect immediately
+Admins no longer edit a user's plan directly. Paid plans come from Stripe
+webhooks (`functions/src/billing/syncSubscription.ts`); non-paid grants go
+through the audited `grantComplimentaryAccess` callable
+(`functions/src/admin/manageAccess.ts`), which is distinct from a real
+subscription and is labeled as such in the UI.
 
 ## Technical Implementation
 
@@ -72,137 +153,115 @@ interface UserProfile {
   uid: string;
   email: string;
   displayName: string | null;
-  role: 'user' | 'admin';
-  subscriptionPlan: 'free' | 'pro' | 'platinum' | 'enterprise';
-  createdAt: Date;
-  updatedAt: Date;
+  role: 'user' | 'admin';        // legacy/display only — see Security Rules
+  subscriptionPlan: SubscriptionPlanId; // legacy/display only — see Security Rules
+  createdAt: string;
+  lastLoginAt: string;
+  isActive: boolean;
 }
 ```
 
-### Subscription Limits
-
-```typescript
-const SUBSCRIPTION_PLANS = {
-  free: { goalLimit: 3, name: 'Free' },
-  pro: { goalLimit: 15, name: 'Pro' },
-  platinum: { goalLimit: 30, name: 'Platinum' },
-  enterprise: { goalLimit: -1, name: 'Enterprise' } // -1 = unlimited
-};
-```
+The authoritative access decision is `entitlements/{uid}` (see
+`src/types.ts`'s `Entitlement`), not this profile document.
 
 ### Security Rules
 
-The Firestore security rules ensure:
-- Users can only access their own data
-- Admin users can access all user profiles
-- Goal creation respects subscription limits
-- Proper authentication for all operations
+`firestore.rules` enforces:
+
+- A user can read their own profile and update only allowlisted personal
+  fields; `role` and `subscriptionPlan` must be unchanged on any
+  client-originated write.
+- Goals: owner can read their own; **all writes are denied** — they must go
+  through `mutateGoals`.
+- `entitlements`, `usage`, `billingSummaries`: owner-readable, never
+  client-writable.
+- `billingCustomers` (internal Stripe IDs): backend-only, not even readable
+  by its own owner.
+- Trusted admin status: `request.auth.token.admin == true` — the custom
+  claim, never an email or Firestore field.
 
 ## Setup Steps
 
 ### 1. Deploy Firestore Rules
 
-Copy the rules from `firestore.rules` to your Firebase Console:
+```bash
+firebase deploy --only firestore:rules --project <your-project-id>
+```
 
-1. Go to Firebase Console > Firestore Database > Rules
-2. Replace existing rules with the content from `firestore.rules`
-3. Publish the rules
+### 2. Grant yourself the admin claim
 
-### 2. Test Admin Account
+Follow "Admin Account Setup" above, then sign out/in and confirm the Admin
+Dashboard is reachable.
 
-1. Register with email `admin@admin.com`
-2. Verify admin role assignment in the user interface
-3. Access the Admin Dashboard
-4. Test user management features
+### 3. Test subscription limits
 
-### 3. Test Subscription Limits
+1. Create a regular user account (Free, 2 active goals).
+2. Create 2 goals; confirm a 3rd is rejected with a clear message.
+3. Complete one goal; confirm a new one can now be created (completed goals
+   don't count against the limit).
+4. Run a real test-mode Checkout (see `STRIPE_SETUP.md`) and confirm the
+   limit updates to 15 once the webhook processes the subscription.
 
-1. Create a regular user account
-2. Try to create more than 3 goals (should be blocked)
-3. Use admin account to upgrade the user to Pro plan
-4. Verify the user can now create up to 15 goals
+### 4. Verify security
 
-### 4. Verify Security
-
-1. Test that regular users cannot access admin features
-2. Verify users can only see their own goals
-3. Confirm admin can view all users but not their goals directly
+1. Confirm a regular user cannot open `/admin` or call admin-only functions.
+2. Confirm a user cannot write `role`, `subscriptionPlan`, or any billing
+   collection directly via the Firebase console/SDK.
+3. Run the automated rules tests: `npm run test:rules` (or the full
+   `npm run test:emulator-suite`).
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Admin Role Not Assigned**
-   - Verify email is exactly `admin@admin.com`
-   - Check browser console for authentication errors
-   - Ensure Firestore rules are properly deployed
+1. **Admin Dashboard not accessible after granting the claim**
+   - Confirm the grant actually completed (check `adminAuditLogs`).
+   - Sign out and back in — a cached ID token won't reflect a new claim.
+   - Check `AuthUser.isTrustedAdmin` in the browser console.
 
-2. **Subscription Limits Not Working**
-   - Check goal creation logic in Goals component
-   - Verify subscription plan is properly set in user profile
-   - Confirm limit checking function is working
+2. **Goal creation rejected unexpectedly**
+   - Check `usage/{uid}`'s `activeGoalCount` against `entitlements/{uid}`'s
+     `maxActiveGoals`.
+   - Remember active count excludes completed goals.
 
-3. **Admin Dashboard Not Accessible**
-   - Verify user has admin role
-   - Check navigation component for admin menu items
-   - Ensure admin routes are properly configured
-
-4. **User Profile Creation Issues**
-   - Check authentication service integration
-   - Verify Firestore rules allow user profile creation
-   - Confirm user service functions are working
+3. **Subscription not reflecting a completed purchase**
+   - Confirm the Stripe webhook actually fired (`stripeEvents` collection).
+   - Run `reconcileOneCustomer` (admin-only) to force a resync for that UID.
 
 ### Debug Steps
 
-1. **Check User Profile**:
-   ```javascript
-   // In browser console
-   console.log(await userService.getUserProfile(currentUser.uid));
-   ```
+Entitlement and usage are Firestore documents you can inspect directly in
+the Firebase Console or emulator UI:
 
-2. **Verify Admin Status**:
-   ```javascript
-   // In browser console
-   console.log(await userService.isAdmin(currentUser.uid));
-   ```
-
-3. **Check Subscription Limits**:
-   ```javascript
-   // In browser console
-   console.log(store.getState().subscription);
-   ```
+- `entitlements/{uid}` — effective plan, source, limit, ad eligibility.
+- `usage/{uid}` — current active goal count.
+- `billingSummaries/{uid}` — status, plan, interval, paid-through date (no
+  internal Stripe IDs — those live in the backend-only `billingCustomers`).
 
 ## Development Notes
 
 ### File Structure
 
-- `src/services/user.ts`: User management service
-- `src/components/AdminDashboard.tsx`: Admin interface
-- `src/components/SubscriptionPlan.tsx`: Subscription display
-- `src/types.ts`: Type definitions for users and subscriptions
-- `firestore.rules`: Security rules for user management
-
-### Key Functions
-
-- `userService.createUserProfile()`: Creates user profile on registration
-- `userService.getAllUsers()`: Admin function to fetch all users
-- `userService.deleteUser()`: Admin function to delete users
-- `store.checkSubscriptionLimit()`: Validates goal creation against limits
+- `functions/src/admin/setAdminClaim.ts` / `functions/scripts/setAdminClaim.ts`: admin provisioning
+- `functions/src/admin/manageAccess.ts`: profile creation, allowlisted updates, complimentary grants
+- `functions/src/lib/entitlements.ts`: effective-access calculation
+- `functions/src/goals/mutateGoals.ts`: server-authoritative goal writes
+- `functions/src/billing/`: Checkout, Portal, webhook, sync, reconciliation
+- `src/components/AdminDashboard.tsx`: admin interface
+- `src/components/SubscriptionPlan.tsx`: subscription display and billing actions
+- `firestore.rules`: security rules
 
 ### Future Enhancements
 
-- Payment integration for subscription upgrades
-- Email notifications for subscription changes
-- Usage analytics and reporting
-- Bulk user management operations
-- Advanced admin permissions system
+Tracked in `admin_subscriptions.md`'s roadmap (steps 9-12): audited account
+deletion/deactivation handling, migration tooling for any legacy manually
+assigned plans, staging rehearsal, and live production cutover.
 
 ## Support
 
 For issues with admin or subscription features:
 
-1. Check this guide for common solutions
-2. Verify Firestore rules are properly deployed
-3. Test with browser developer tools
-4. Check Firebase Console for error logs
-5. Ensure all required services are properly configured
+1. Check this guide and `admin_subscriptions.md` for the full design.
+2. Run `npm run test:emulator-suite` to check nothing regressed.
+3. Inspect the relevant Firestore documents (see Debug Steps above).
+4. Check Firebase Functions logs for webhook/reconciliation errors.

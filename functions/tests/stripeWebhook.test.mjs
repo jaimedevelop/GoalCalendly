@@ -34,16 +34,19 @@ const PRICE_PRO_MONTHLY = process.env.STRIPE_PRICE_PRO_MONTHLY ?? 'price_pro_mon
 let testEnv;
 let uid;
 
-function fakeSubscription(overrides = {}) {
+function fakeSubscription({ current_period_end, ...overrides } = {}) {
   const now = Math.floor(Date.now() / 1000);
+  // As of the Basil API version (2025-03-31+), current_period_end lives on
+  // the subscription item, not the Subscription object itself — mirror that
+  // shape here so these mocks match what our code actually receives from
+  // Stripe in production (see syncSubscription.ts).
   return {
     id: 'sub_test_1',
     object: 'subscription',
     customer: 'cus_test_1',
     status: 'active',
     cancel_at_period_end: false,
-    current_period_end: now + 30 * 24 * 60 * 60,
-    items: { data: [{ price: { id: PRICE_PRO_MONTHLY } }] },
+    items: { data: [{ price: { id: PRICE_PRO_MONTHLY }, current_period_end: current_period_end ?? now + 30 * 24 * 60 * 60 }] },
     metadata: { firebaseUid: uid },
     ...overrides,
   };
@@ -162,6 +165,23 @@ test('cancellation (customer.subscription.deleted) with no remaining paid-throug
 
 test('an event for an unmapped customer is accepted (200) but skipped, not errored', async () => {
   const result = await postEvent('customer.subscription.created', fakeSubscription({ metadata: {}, customer: 'cus_totally_unknown' }));
+  assert.equal(result.status, 200, result.body);
+  const entitlement = await getEntitlement(uid);
+  assert.equal(entitlement, null);
+});
+
+test('an invoice event with no linked subscription (parent.subscription_details null) is accepted and skipped, not errored', async () => {
+  // Confirms the invoice.* handler reads the Basil-era
+  // parent.subscription_details.subscription path (not the removed top-level
+  // invoice.subscription field) without throwing when it's absent, e.g. a
+  // one-off invoice unrelated to any subscription.
+  const fakeInvoiceNoSub = {
+    id: 'in_test_1',
+    object: 'invoice',
+    customer: 'cus_test_1',
+    parent: { type: 'quote_details', subscription_details: null, quote_details: {} },
+  };
+  const result = await postEvent('invoice.paid', fakeInvoiceNoSub);
   assert.equal(result.status, 200, result.body);
   const entitlement = await getEntitlement(uid);
   assert.equal(entitlement, null);

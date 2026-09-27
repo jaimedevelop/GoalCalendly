@@ -75,8 +75,12 @@ export async function handleStripeEvent(stripe: Stripe, event: Stripe.Event): Pr
       case 'invoice.payment_failed':
       case 'invoice.payment_action_required': {
         const invoice = event.data.object as Stripe.Invoice;
-        if (invoice.subscription) {
-          const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
+        // Since the Basil API version (2025-03-31+), an invoice's subscription
+        // link moved off the top-level `subscription` field onto
+        // `parent.subscription_details.subscription`.
+        const subscriptionId = invoice.parent?.subscription_details?.subscription;
+        if (subscriptionId) {
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId as string);
           await syncSubscriptionState(subscription);
         }
         break;
@@ -93,7 +97,7 @@ export async function handleStripeEvent(stripe: Stripe, event: Stripe.Event): Pr
 }
 
 export const stripeWebhook = onRequest(
-  { cors: false },
+  { cors: false, secrets: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] },
   async (req, res) => {
     const secretKey = process.env.STRIPE_SECRET_KEY;
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -105,7 +109,7 @@ export const stripeWebhook = onRequest(
       return;
     }
 
-    const stripe = new Stripe(secretKey, { apiVersion: '2025-02-24.acacia' });
+    const stripe = new Stripe(secretKey, { apiVersion: '2026-08-26.dahlia' });
     const signature = req.headers['stripe-signature'];
 
     let event: Stripe.Event;

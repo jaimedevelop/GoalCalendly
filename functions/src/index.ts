@@ -7,7 +7,9 @@
 import { onCall } from 'firebase-functions/v2/https';
 import { requireAuth } from './lib/firebaseAdmin.js';
 
-export { createFreeProfile, updateOwnProfile, grantComplimentaryAccess } from './admin/manageAccess.js';
+export { createFreeProfile, updateOwnProfile, grantComplimentaryAccess, revokeComplimentaryAccess, listUserAccessSummaries } from './admin/manageAccess.js';
+export { checkAccountBillingStatus, deactivateAccount, reactivateAccount, deleteAccount } from './admin/manageAccountLifecycle.js';
+export { setGoalWritesPaused } from './admin/maintenanceFlags.js';
 export { mutateGoals } from './goals/mutateGoals.js';
 export { stripeWebhook } from './billing/stripeWebhook.js';
 export { reconcileSubscriptionsScheduled, reconcileOneCustomer } from './billing/reconcileSubscriptions.js';

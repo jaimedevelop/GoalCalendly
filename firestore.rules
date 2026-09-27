@@ -91,7 +91,18 @@ service cloud.firestore {
 
     // Billing and entitlement collections are backend-owned. The Admin SDK
     // bypasses these rules for writes; clients only ever read.
+    //
+    // billingCustomers holds internal Stripe customer/subscription/price IDs
+    // and is backend-only, even for its own owner — Firestore reads return
+    // whole documents, so field-level filtering can't hide those IDs.
+    // billingSummaries is the owner-readable projection with no Stripe IDs
+    // (admin_subscriptions.md section 6), written alongside it by
+    // functions/src/billing/syncSubscription.ts.
     match /billingCustomers/{userId} {
+      allow read, write: if false;
+    }
+
+    match /billingSummaries/{userId} {
       allow read: if isOwner(userId);
       allow write: if false;
     }
@@ -125,6 +136,14 @@ service cloud.firestore {
     // request guard) — backend-only.
     match /checkoutReservations/{reservationId} {
       allow read, write: if false;
+    }
+
+    // Maintenance-window switches (e.g. goalWritesPaused during a counter
+    // migration, admin_subscriptions.md section 9). Trusted admins can read
+    // current state for an ops dashboard; only the backend ever writes it.
+    match /systemFlags/{flagId} {
+      allow read: if isTrustedAdmin();
+      allow write: if false;
     }
 
     // Deny all other access.

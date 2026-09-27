@@ -68,8 +68,9 @@ export const updateUserProfile = async (
 };
 
 // Update user subscription plan
+/** @deprecated `subscriptionPlan` is a privileged field denied by firestore.rules for direct client writes. Use src/services/admin.ts's grantComplimentaryAccess (audited) instead. */
 export const updateUserSubscription = async (
-  uid: string, 
+  uid: string,
   plan: SubscriptionPlan
 ): Promise<void> => {
   try {
@@ -98,6 +99,7 @@ export const getAllUsers = async (): Promise<UserProfile[]> => {
 };
 
 // Admin function to delete user
+/** @deprecated Direct client deletion leaves Firebase Auth/billing untouched and is denied by firestore.rules for anyone but the Admin SDK. Use src/services/admin.ts's deleteAccount instead (checks for a live Stripe subscription first, per admin_subscriptions.md section 5/9). */
 export const deleteUser = async (uid: string): Promise<void> => {
   try {
     // Delete user profile
@@ -113,6 +115,7 @@ export const deleteUser = async (uid: string): Promise<void> => {
 };
 
 // Admin function to update user role
+/** @deprecated `role` is a privileged field denied by firestore.rules for direct client writes. Trusted admin status comes only from a Firebase custom claim — see functions/scripts/setAdminClaim.ts. */
 export const updateUserRole = async (uid: string, role: UserRole): Promise<void> => {
   try {
     await updateDoc(doc(db, 'users', uid), {
@@ -126,6 +129,7 @@ export const updateUserRole = async (uid: string, role: UserRole): Promise<void>
 };
 
 // Admin function to deactivate/activate user
+/** @deprecated `isActive` is a privileged field denied by firestore.rules for direct client writes. Use src/services/admin.ts's deactivateAccount/reactivateAccount instead (audited). */
 export const toggleUserStatus = async (uid: string, isActive: boolean): Promise<void> => {
   try {
     await updateDoc(doc(db, 'users', uid), {

@@ -12,7 +12,7 @@ import type Stripe from 'stripe';
 import { db, auth } from '../lib/firebaseAdmin.js';
 import { computeEffectiveEntitlement, type BillingState } from '../lib/entitlements.js';
 import { planFromPriceId } from '../lib/stripe.js';
-import type { BillingCustomerRecord, BillingStatus, EntitlementRecord, ComplimentaryGrantRecord } from '../lib/types.js';
+import type { BillingCustomerRecord, BillingStatus, BillingSummaryRecord, EntitlementRecord, ComplimentaryGrantRecord } from '../lib/types.js';
 import type { SubscriptionPlanId, BillingInterval } from '../../../shared/subscriptionPlans.js';
 
 const GRACE_PERIOD_DAYS = 7;
@@ -73,7 +73,13 @@ export async function syncSubscriptionState(subscription: Stripe.Subscription): 
     return { skipped: `No Firebase UID mapped for subscription ${subscription.id} (customer ${subscription.customer}).` };
   }
 
-  const priceId = subscription.items.data[0]?.price?.id;
+  // As of the Basil API version (2025-03-31 and later), the billing period
+  // lives on each subscription item rather than on the Subscription object
+  // itself — a subscription can in principle have items on different cycles,
+  // but this app only ever creates single-item subscriptions, so item[0] is
+  // authoritative for both the price and the period end.
+  const primaryItem = subscription.items.data[0];
+  const priceId = primaryItem?.price?.id;
   const mapped = priceId ? planFromPriceId(priceId) : null;
 
   // A trusted admin's entitlement is sourced from their custom claim
@@ -92,6 +98,7 @@ export async function syncSubscriptionState(subscription: Stripe.Subscription): 
   }
 
   const billingCustomerRef = db.collection('billingCustomers').doc(uid);
+  const billingSummaryRef = db.collection('billingSummaries').doc(uid);
   const entitlementRef = db.collection('entitlements').doc(uid);
   const complimentaryRef = db.collection('complimentaryGrants').doc(uid);
 
@@ -104,7 +111,7 @@ export async function syncSubscriptionState(subscription: Stripe.Subscription): 
     // Stripe subscriptions carry no simple monotonic version counter, so we
     // approximate using current_period_end + status, which only moves
     // forward for the same subscription under normal lifecycle progression.
-    const newPeriodEnd = subscription.current_period_end;
+    const newPeriodEnd = primaryItem.current_period_end;
     const isSameOrOlder =
       existingBilling?.stripeSubscriptionId === subscription.id &&
       existingBilling.status === mapStripeStatus(subscription.status) &&
@@ -146,6 +153,22 @@ export async function syncSubscriptionState(subscription: Stripe.Subscription): 
       lastSyncedAt: new Date().toISOString(),
     };
     tx.set(billingCustomerRef, billingRecord);
+
+    // Owner-readable projection with no internal Stripe IDs — Firestore
+    // reads return whole documents, so this MUST be a separate document from
+    // billingCustomers rather than a rules field filter (admin_subscriptions.md
+    // section 6: "store backend-only details in a separate document instead
+    // of relying on field-level read filtering").
+    const summaryRecord: BillingSummaryRecord = {
+      uid,
+      status,
+      plan,
+      interval,
+      paidThroughDate,
+      ...(gracePeriodEndsAt ? { gracePeriodEndsAt } : {}),
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    };
+    tx.set(billingSummaryRef, summaryRecord);
 
     const complimentary = complimentarySnap.data() as ComplimentaryGrantRecord | undefined;
     const billingState: BillingState = {

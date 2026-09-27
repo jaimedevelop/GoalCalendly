@@ -10,7 +10,16 @@ import { getAuth } from 'firebase-admin/auth';
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 
 if (getApps().length === 0) {
-  initializeApp();
+  // Passing projectId explicitly (rather than relying on initializeApp()'s
+  // ambient detection) fixes a real issue hit running scripts/setAdminClaim.ts
+  // locally against a real project: the Auth SDK's identitytoolkit client
+  // resolved an unrelated cached project ID via ADC and failed with
+  // "quota project" / SERVICE_DISABLED errors even after GOOGLE_APPLICATION
+  // credentials and the quota project were both correctly configured.
+  // Deployed Cloud Functions also set GOOGLE_CLOUD_PROJECT/GCLOUD_PROJECT, so
+  // this is safe there too — it isn't just a local-script workaround.
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
+  initializeApp(projectId ? { projectId } : undefined);
 }
 
 export const db = getFirestore();

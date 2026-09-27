@@ -217,3 +217,45 @@ test('an unauthenticated caller is rejected', async () => {
     }
   );
 });
+
+test('a maintenance-window pause blocks all goal writes, and resuming restores them', async () => {
+  // Simulates the operator flipping systemFlags/goalWritesPaused during a
+  // counter-migration maintenance window (admin_subscriptions.md section 9,
+  // step 10's write-pause rehearsal), bypassing the admin callable to isolate
+  // just mutateGoals's own check.
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection('systemFlags').doc('goalWritesPaused').set({
+      paused: true,
+      reason: 'test: rehearsing migration maintenance window',
+      updatedBy: 'test-harness',
+      updatedAt: new Date().toISOString(),
+    });
+  });
+
+  await assert.rejects(
+    () => mutateGoals({ requestId: 'paused-create', type: 'create', goals: [newGoal()] }),
+    (err) => {
+      assert.equal(err.code, 'functions/unavailable');
+      return true;
+    }
+  );
+  // Never-increasing mutations are blocked too — a real maintenance window
+  // freezes ALL goal writes, not just quota-increasing ones.
+  const existing = newGoal();
+  await seedGoal(currentUid, existing);
+  await assert.rejects(() => mutateGoals({ requestId: 'paused-delete', type: 'delete', goalId: existing.id }));
+  assert.equal(await getUsage(currentUid), 0);
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection('systemFlags').doc('goalWritesPaused').set({
+      paused: false,
+      reason: 'test: resuming after rehearsed migration window',
+      updatedBy: 'test-harness',
+      updatedAt: new Date().toISOString(),
+    });
+  });
+
+  const result = await mutateGoals({ requestId: 'resumed-create', type: 'create', goals: [newGoal()] });
+  assert.equal(result.data.ok, true);
+  assert.equal(await getUsage(currentUid), 1);
+});

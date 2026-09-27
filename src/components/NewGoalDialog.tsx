@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore } from '../store';
+import { useStore, shouldShowAds } from '../store';
 import { LEVELS, DEFAULT_GOAL_SETTINGS } from '../types';
 import { AdvertisingDisplay } from './AdvertisingDisplay';
 
@@ -9,10 +9,9 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const addGoal = useStore((state) => state.addGoal);
-  const { user } = useStore();
+  const { entitlement, isEntitlementLoading } = useStore();
 
-  // Check if user is free tier (not admin and has free subscription)
-  const isFreeUser = user && user.subscriptionPlan === 'free' && !user.isTrustedAdmin;
+  const showAds = shouldShowAds(entitlement, isEntitlementLoading);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +79,7 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
           </div>
           
           {/* Advertising Suggestion for Free Users */}
-          {isFreeUser && (
+          {showAds && (
             <div className="border-t pt-4">
               <AdvertisingDisplay
                 displayMethod="suggestion"

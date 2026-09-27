@@ -6,8 +6,8 @@ Since the advertising system is now fully implemented, you just need to create s
 
 ### Option 1: Use the Admin Interface (Recommended)
 
-1. **Login as Admin**
-   - Go to your app and login with: `admin@admin.com` / `admin123`
+1. **Login as a trusted admin**
+   - Sign in with an account that has been granted the admin custom claim — see `ADMIN_SETUP.md` ("Grant the admin claim"). There is no special admin email/password.
 
 2. **Create Advertising Ways**
    - Go to the Admin Dashboard → "Advertising Ways" tab

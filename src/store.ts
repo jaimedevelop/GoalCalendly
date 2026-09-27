@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Goal, Timer, GoalSettings, DEFAULT_GOAL_SETTINGS, LEVELS, WeeklyTrophy } from './types';
+import { Goal, Timer, GoalSettings, DEFAULT_GOAL_SETTINGS, LEVELS, WeeklyTrophy, Entitlement } from './types';
 import { format, getWeek } from 'date-fns';
 import { AuthUser } from './services/auth.js';
 import { createGoal, updateGoalFields, completeGoal, deleteGoalRemote } from './services/goals.js';
@@ -10,6 +10,18 @@ interface Store {
   defaultSettings: GoalSettings;
   user: AuthUser | null;
   isAuthLoading: boolean;
+  /**
+   * Server-owned entitlement, subscribed live once in App.tsx (see
+   * src/hooks/useSubscription.ts) and read from here everywhere else so
+   * every component agrees on the same effective plan/ad-eligibility
+   * without each mounting its own Firestore listener. null before the
+   * first snapshot arrives or while signed out — components should treat
+   * that as "unknown yet", not "confirmed Free" (admin_subscriptions.md
+   * section 7: never treat a transient read gap as a confirmed downgrade).
+   */
+  entitlement: Entitlement | null;
+  isEntitlementLoading: boolean;
+  setEntitlement: (entitlement: Entitlement | null, isLoading: boolean) => void;
   /** Set to a human-readable message when the server rejects the most recent goal mutation. Cleared on the next successful one. */
   lastGoalError: string | null;
   addGoal: (goal: Goal) => Promise<boolean>;
@@ -26,6 +38,17 @@ interface Store {
   clearUserData: () => void;
   canAddGoal: () => boolean;
   getGoalLimit: () => number;
+}
+
+/**
+ * True only once we have positive confirmation the user should see ads:
+ * a loaded, non-null entitlement with hasAdvertising set. Loading/unknown
+ * state and admins never show ads, matching the effective-access policy in
+ * functions/src/lib/entitlements.ts.
+ */
+export function shouldShowAds(entitlement: Entitlement | null, isLoading: boolean): boolean {
+  if (isLoading || !entitlement) return false;
+  return entitlement.hasAdvertising;
 }
 
 const calculateWeeklyTrophies = (weeklyTimeSpent: number, weeklyGoal: number): number => {
@@ -86,6 +109,9 @@ export const useStore = create<Store>((set, get) => ({
   defaultSettings: DEFAULT_GOAL_SETTINGS,
   user: null,
   isAuthLoading: true,
+  entitlement: null,
+  isEntitlementLoading: true,
+  setEntitlement: (entitlement, isLoading) => set({ entitlement, isEntitlementLoading: isLoading }),
   lastGoalError: null,
   addGoal: async (goal) => {
     const newGoal = { ...goal, weeklyTrophies: [] };
@@ -306,6 +332,8 @@ export const useStore = create<Store>((set, get) => ({
         elapsedTime: 0,
       },
       defaultSettings: DEFAULT_GOAL_SETTINGS,
+      entitlement: null,
+      isEntitlementLoading: true,
       // Keep user and isAuthLoading as they are managed by auth flow
     });
     

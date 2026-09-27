@@ -157,30 +157,27 @@ export function Help() {
               </ul>
             </div>
             <div className="bg-blue-50 p-4 rounded-md">
-              <h3 className="font-medium text-gray-900 mb-2">Pro - ${SUBSCRIPTION_PLANS.pro.monthlyPrice}</h3>
+              <h3 className="font-medium text-gray-900 mb-2">Pro - ${SUBSCRIPTION_PLANS.pro.monthlyPrice}/mo</h3>
               <p className="text-gray-700 text-sm mb-2">For serious goal achievers</p>
               <ul className="text-xs text-gray-600 space-y-1">
-                <li>• Up to {SUBSCRIPTION_PLANS.pro.maxActiveGoals} goals</li>
-                <li>• Advanced features</li>
-                <li>• Priority support</li>
+                <li>• Up to {SUBSCRIPTION_PLANS.pro.maxActiveGoals} active goals</li>
+                <li>• No advertising</li>
               </ul>
             </div>
             <div className="bg-purple-50 p-4 rounded-md">
-              <h3 className="font-medium text-gray-900 mb-2">Platinum - ${SUBSCRIPTION_PLANS.platinum.monthlyPrice}</h3>
+              <h3 className="font-medium text-gray-900 mb-2">Platinum - ${SUBSCRIPTION_PLANS.platinum.monthlyPrice}/mo</h3>
               <p className="text-gray-700 text-sm mb-2">For power users</p>
               <ul className="text-xs text-gray-600 space-y-1">
-                <li>• Up to {SUBSCRIPTION_PLANS.platinum.maxActiveGoals} goals</li>
-                <li>• Premium features</li>
-                <li>• Premium support</li>
+                <li>• Up to {SUBSCRIPTION_PLANS.platinum.maxActiveGoals} active goals</li>
+                <li>• No advertising</li>
               </ul>
             </div>
             <div className="bg-yellow-50 p-4 rounded-md">
               <h3 className="font-medium text-gray-900 mb-2">Enterprise</h3>
               <p className="text-gray-700 text-sm mb-2">For teams and organizations</p>
               <ul className="text-xs text-gray-600 space-y-1">
-                <li>• Unlimited goals</li>
-                <li>• Custom features</li>
-                <li>• Contact us for pricing</li>
+                <li>• Unlimited active goals</li>
+                <li>• Custom pricing — contact us</li>
               </ul>
             </div>
           </div>

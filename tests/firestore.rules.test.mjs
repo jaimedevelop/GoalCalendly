@@ -134,16 +134,30 @@ test('no client can write billingCustomers, entitlements, or usage, even their o
   await assertFails(admin.firestore().collection('entitlements').doc('alice').set({ plan: 'enterprise' }));
 });
 
-test('owner can read their own entitlement/billing/usage docs once written by the backend', async () => {
+test('billingCustomers is backend-only even for its own owner — internal Stripe IDs never reach the client', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection('billingCustomers').doc('alice').set({
+      uid: 'alice', stripeCustomerId: 'cus_secret', status: 'active',
+    });
+  });
+
+  const alice = testEnv.authenticatedContext('alice');
+  await assertFails(alice.firestore().collection('billingCustomers').doc('alice').get());
+
+  const admin = testEnv.authenticatedContext('real-admin', { admin: true });
+  await assertFails(admin.firestore().collection('billingCustomers').doc('alice').get());
+});
+
+test('owner can read their own entitlement/billing summary/usage docs once written by the backend', async () => {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await ctx.firestore().collection('entitlements').doc('alice').set({ plan: 'free', source: 'free' });
-    await ctx.firestore().collection('billingCustomers').doc('alice').set({ status: 'none' });
+    await ctx.firestore().collection('billingSummaries').doc('alice').set({ status: 'none' });
     await ctx.firestore().collection('usage').doc('alice').set({ activeGoalCount: 1 });
   });
 
   const alice = testEnv.authenticatedContext('alice');
   await assertSucceeds(alice.firestore().collection('entitlements').doc('alice').get());
-  await assertSucceeds(alice.firestore().collection('billingCustomers').doc('alice').get());
+  await assertSucceeds(alice.firestore().collection('billingSummaries').doc('alice').get());
   await assertSucceeds(alice.firestore().collection('usage').doc('alice').get());
 
   const dave = testEnv.authenticatedContext('dave');
@@ -165,6 +179,20 @@ test('stripeEvents and adminAuditLogs reject all client reads and writes except 
     await ctx.firestore().collection('adminAuditLogs').doc('log_1').set({ action: 'grant_admin' });
   });
   await assertSucceeds(admin.firestore().collection('adminAuditLogs').doc('log_1').get());
+});
+
+test('systemFlags (e.g. goalWritesPaused) is admin-readable but backend-only to write', async () => {
+  const admin = testEnv.authenticatedContext('real-admin', { admin: true });
+  const alice = testEnv.authenticatedContext('alice');
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection('systemFlags').doc('goalWritesPaused').set({ paused: true });
+  });
+
+  await assertSucceeds(admin.firestore().collection('systemFlags').doc('goalWritesPaused').get());
+  await assertFails(alice.firestore().collection('systemFlags').doc('goalWritesPaused').get());
+  await assertFails(alice.firestore().collection('systemFlags').doc('goalWritesPaused').set({ paused: false }));
+  await assertFails(admin.firestore().collection('systemFlags').doc('goalWritesPaused').set({ paused: false }));
 });
 
 test('an unauthenticated request is rejected across the board', async () => {

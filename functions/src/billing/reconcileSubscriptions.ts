@@ -27,7 +27,7 @@ import type { BillingCustomerRecord, EntitlementRecord, ComplimentaryGrantRecord
 function getStripe(): Stripe {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) throw new Error('STRIPE_SECRET_KEY is not configured.');
-  return new Stripe(secretKey, { apiVersion: '2025-02-24.acacia' });
+  return new Stripe(secretKey, { apiVersion: '2026-08-26.dahlia' });
 }
 
 interface ReconcileResult {
@@ -144,7 +144,9 @@ export async function runReconciliation(): Promise<ReconcileResult[]> {
 }
 
 /** Scheduled reconciliation. Runs hourly; see admin_subscriptions.md section 6. */
-export const reconcileSubscriptionsScheduled = onSchedule('every 60 minutes', async () => {
+export const reconcileSubscriptionsScheduled = onSchedule(
+  { schedule: 'every 60 minutes', secrets: ['STRIPE_SECRET_KEY'] },
+  async () => {
   const results = await runReconciliation();
   const errors = results.filter((r) => r.outcome === 'error');
   if (errors.length > 0) {
@@ -152,10 +154,11 @@ export const reconcileSubscriptionsScheduled = onSchedule('every 60 minutes', as
   } else {
     console.log(`Reconciliation completed: ${results.length} record(s) processed.`);
   }
-});
+  }
+);
 
 /** Targeted repair for one UID, for support use (section 9). Requires a trusted admin caller. */
-export const reconcileOneCustomer = onCall(async (request) => {
+export const reconcileOneCustomer = onCall({ secrets: ['STRIPE_SECRET_KEY'] }, async (request) => {
   requireAdmin(request);
   const targetUid = request.data?.uid as string | undefined;
   if (!targetUid) throw new HttpsError('invalid-argument', 'uid is required.');

@@ -17,7 +17,7 @@ import type { BillingInterval } from '../../../shared/subscriptionPlans.js';
 function getStripe(): Stripe {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) throw new Error('STRIPE_SECRET_KEY is not configured.');
-  return new Stripe(secretKey, { apiVersion: '2025-02-24.acacia' });
+  return new Stripe(secretKey, { apiVersion: '2026-08-26.dahlia' });
 }
 
 function isCheckoutEnabled(): boolean {
@@ -61,7 +61,7 @@ async function ensureStripeCustomer(stripe: Stripe, uid: string, email: string |
   return customer.id;
 }
 
-export const createCheckoutSession = onCall(async (request) => {
+export const createCheckoutSession = onCall({ secrets: ['STRIPE_SECRET_KEY'] }, async (request) => {
   const uid = requireAuth(request);
   const email = request.auth?.token.email;
 

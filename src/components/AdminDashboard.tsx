@@ -18,13 +18,8 @@ import {
   Save,
   X
 } from 'lucide-react';
-import { UserProfile, SubscriptionPlan, SUBSCRIPTION_PLANS, Campaign, AdvertisingWay } from '../types.js';
-import {
-  getAllUsers,
-  deleteUser,
-  toggleUserStatus,
-  updateUserSubscription
-} from '../services/user.js';
+import { UserProfile, Campaign, AdvertisingWay } from '../types.js';
+import { getAllUsers } from '../services/user.js';
 import {
   getGoalsCountByUser,
   getAllCampaigns,
@@ -36,6 +31,17 @@ import {
   updateAdvertisingWay,
   deleteAdvertisingWay
 } from '../services/db.js';
+import {
+  listUserAccessSummaries,
+  grantComplimentaryAccess,
+  revokeComplimentaryAccess,
+  checkAccountBillingStatus,
+  deactivateAccount,
+  reactivateAccount,
+  deleteAccount,
+  type UserAccessSummary,
+} from '../services/admin.js';
+import type { SubscriptionPlanId } from '../../shared/subscriptionPlans.js';
 
 // Sample campaigns data for initialization
 const sampleCampaigns = [
@@ -148,6 +154,12 @@ const AdminDashboard: React.FC = () => {
   const [advertisingWaysLoading, setAdvertisingWaysLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [goalsByUser, setGoalsByUser] = useState<Record<string, number>>({});
+  const [accessByUser, setAccessByUser] = useState<Record<string, UserAccessSummary>>({});
+  const [grantDialogUid, setGrantDialogUid] = useState<string | null>(null);
+  const [grantPlan, setGrantPlan] = useState<SubscriptionPlanId>('pro');
+  const [grantExpiryDays, setGrantExpiryDays] = useState<number | ''>(30);
+  const [grantReason, setGrantReason] = useState('');
+  const [actionPendingUid, setActionPendingUid] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'users' | 'advertising' | 'advertisingWays'>('users');
   const [showCampaignForm, setShowCampaignForm] = useState(false);
   const [showAdvertisingWayForm, setShowAdvertisingWayForm] = useState(false);
@@ -188,10 +200,10 @@ const AdminDashboard: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const allUsers = await getAllUsers();
       setUsers(allUsers);
-      
+
       try {
         const goalsCount = await getGoalsCountByUser();
         setGoalsByUser(goalsCount);
@@ -199,6 +211,21 @@ const AdminDashboard: React.FC = () => {
       } catch (goalError) {
         console.warn('[DEBUG] AdminDashboard: Failed to load goal counts, continuing without them:', goalError);
         setGoalsByUser({});
+      }
+
+      // Effective plan/billing/grant state — not visible in the plain
+      // Firestore user list, since firestore.rules only allows a user to
+      // read their own entitlement/billing docs (admin_subscriptions.md
+      // section 9). This Admin-SDK-backed callable is the only way the
+      // dashboard can show billed-vs-effective plan.
+      const accessResult = await listUserAccessSummaries();
+      if (accessResult.ok) {
+        const byUid: Record<string, UserAccessSummary> = {};
+        for (const summary of accessResult.summaries) byUid[summary.uid] = summary;
+        setAccessByUser(byUid);
+      } else {
+        console.warn('[DEBUG] AdminDashboard: Failed to load access summaries, continuing without them:', accessResult.error);
+        setAccessByUser({});
       }
     } catch (err) {
       setError('Failed to load users');
@@ -244,42 +271,103 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Every action below goes through an audited backend callable — direct
+  // Firestore writes to role/subscriptionPlan/isActive are denied by
+  // firestore.rules (admin_subscriptions.md section 3/9).
+
   const handleDeleteUser = async (uid: string) => {
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+    setActionPendingUid(uid);
+    setError(null);
+
+    const statusResult = await checkAccountBillingStatus(uid);
+    if (!statusResult.ok) {
+      setError(`Could not check billing status: ${statusResult.error.message}`);
+      setActionPendingUid(null);
       return;
     }
 
-    try {
-      await deleteUser(uid);
-      setUsers(users.filter(user => user.uid !== uid));
-    } catch (err) {
-      setError('Failed to delete user');
-      console.error('Error deleting user:', err);
+    let acknowledgeLiveSubscription = false;
+    if (statusResult.status.hasLiveSubscription) {
+      acknowledgeLiveSubscription = confirm(
+        `This account has a live subscription (status: ${statusResult.status.status}). ` +
+        `Deleting the profile will NOT cancel the Stripe subscription — that must be done separately through the billing support workflow. ` +
+        `Continue deleting the profile anyway?`
+      );
+      if (!acknowledgeLiveSubscription) {
+        setActionPendingUid(null);
+        return;
+      }
+    } else if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+      setActionPendingUid(null);
+      return;
     }
+
+    const reason = prompt('Reason for deleting this account (recorded in the audit log):') ?? '';
+    if (!reason) {
+      setActionPendingUid(null);
+      return;
+    }
+
+    const result = await deleteAccount(uid, reason, acknowledgeLiveSubscription);
+    if (result.ok) {
+      setUsers(users.filter(user => user.uid !== uid));
+    } else {
+      setError(`Failed to delete user: ${result.error?.message}`);
+    }
+    setActionPendingUid(null);
   };
 
   const handleToggleUserStatus = async (uid: string, currentStatus: boolean) => {
-    try {
-      await toggleUserStatus(uid, !currentStatus);
-      setUsers(users.map(user => 
-        user.uid === uid ? { ...user, isActive: !currentStatus } : user
-      ));
-    } catch (err) {
-      setError('Failed to update user status');
-      console.error('Error updating user status:', err);
+    const reason = prompt(`Reason for ${currentStatus ? 'deactivating' : 'reactivating'} this account:`) ?? '';
+    if (!reason) return;
+
+    setActionPendingUid(uid);
+    const result = currentStatus ? await deactivateAccount(uid, reason) : await reactivateAccount(uid, reason);
+    if (result.ok) {
+      setUsers(users.map(user => user.uid === uid ? { ...user, isActive: !currentStatus } : user));
+    } else {
+      setError(`Failed to update user status: ${result.error?.message}`);
     }
+    setActionPendingUid(null);
   };
 
-  const handleUpdateSubscription = async (uid: string, plan: SubscriptionPlan) => {
-    try {
-      await updateUserSubscription(uid, plan);
-      setUsers(users.map(user => 
-        user.uid === uid ? { ...user, subscriptionPlan: plan } : user
-      ));
-    } catch (err) {
-      setError('Failed to update subscription');
-      console.error('Error updating subscription:', err);
+  const openGrantDialog = (uid: string) => {
+    setGrantDialogUid(uid);
+    setGrantPlan('pro');
+    setGrantExpiryDays(30);
+    setGrantReason('');
+  };
+
+  const handleGrantComplimentaryAccess = async () => {
+    if (!grantDialogUid || !grantReason) return;
+    setActionPendingUid(grantDialogUid);
+
+    const expiresAt = grantExpiryDays === '' || grantExpiryDays <= 0
+      ? undefined
+      : new Date(Date.now() + Number(grantExpiryDays) * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = await grantComplimentaryAccess(grantDialogUid, grantPlan, expiresAt, grantReason);
+    if (result.ok) {
+      setGrantDialogUid(null);
+      await loadUsers();
+    } else {
+      setError(`Failed to grant access: ${result.error?.message}`);
     }
+    setActionPendingUid(null);
+  };
+
+  const handleRevokeComplimentaryAccess = async (uid: string) => {
+    const reason = prompt('Reason for revoking this complimentary grant:') ?? '';
+    if (!reason) return;
+
+    setActionPendingUid(uid);
+    const result = await revokeComplimentaryAccess(uid, reason);
+    if (result.ok) {
+      await loadUsers();
+    } else {
+      setError(`Failed to revoke access: ${result.error?.message}`);
+    }
+    setActionPendingUid(null);
   };
 
   const resetCampaignForm = () => {
@@ -596,7 +684,10 @@ const AdminDashboard: React.FC = () => {
                         Role
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Subscription
+                        Billed Plan
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Effective Access
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Goals
@@ -621,12 +712,13 @@ const AdminDashboard: React.FC = () => {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {users.map((user) => {
                       const userGoalCount = goalsByUser[user.uid] || 0;
-                      const userPlan = SUBSCRIPTION_PLANS[user.subscriptionPlan];
-                      // NOTE: this list comes from getAllUsers() (Firestore `role` field only);
-                      // it cannot see the trusted admin custom claim. Treat as informational
-                      // until step 9 replaces this with a backend-listed, claim-verified view.
-                      const isAdmin = user.role === 'admin';
-                      const maxGoals = isAdmin ? -1 : userPlan.maxGoals;
+                      const access = accessByUser[user.uid];
+                      const entitlement = access?.entitlement ?? null;
+                      // NOTE: `role` here comes from getAllUsers() (Firestore field only);
+                      // it cannot see the trusted admin custom claim. The effective-access
+                      // column (entitlement.source === 'admin') reflects the real claim instead.
+                      const isAdmin = user.role === 'admin' || entitlement?.source === 'admin';
+                      const maxGoals = entitlement ? entitlement.maxActiveGoals : (isAdmin ? -1 : 2);
                       const isAtLimit = !isAdmin && maxGoals !== -1 && userGoalCount >= maxGoals;
                       const goalsRemaining = isAdmin || maxGoals === -1 ? '∞' : Math.max(0, maxGoals - userGoalCount);
 
@@ -651,17 +743,55 @@ const AdminDashboard: React.FC = () => {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <select
-                              value={user.subscriptionPlan}
-                              onChange={(e) => handleUpdateSubscription(user.uid, e.target.value as SubscriptionPlan)}
-                              className="text-sm border border-gray-300 rounded px-2 py-1"
-                              disabled={user.role === 'admin'}
-                            >
-                              <option value="free">Free</option>
-                              <option value="pro">Pro</option>
-                              <option value="platinum">Platinum</option>
-                              <option value="enterprise">Enterprise</option>
-                            </select>
+                            <div className="text-sm text-gray-900 capitalize">{user.subscriptionPlan}</div>
+                            {access?.billing && access.billing.status !== 'none' && (
+                              <div className="text-xs text-gray-500">
+                                Stripe: {access.billing.status}
+                                {access.billing.cancelAtPeriodEnd && ' (cancels at period end)'}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {entitlement ? (
+                              <div>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
+                                  entitlement.source === 'admin' ? 'bg-red-100 text-red-800' :
+                                  entitlement.source === 'complimentary' ? 'bg-purple-100 text-purple-800' :
+                                  entitlement.source === 'stripe' ? 'bg-blue-100 text-blue-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {entitlement.plan} ({entitlement.source})
+                                </span>
+                                {entitlement.expiresAt && (
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    Expires {new Date(entitlement.expiresAt).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400">Not loaded</span>
+                            )}
+                            <div className="mt-1 flex gap-2">
+                              {access?.complimentaryGrant ? (
+                                <button
+                                  onClick={() => handleRevokeComplimentaryAccess(user.uid)}
+                                  disabled={actionPendingUid === user.uid}
+                                  className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                                >
+                                  Revoke grant
+                                </button>
+                              ) : (
+                                !isAdmin && (
+                                  <button
+                                    onClick={() => openGrantDialog(user.uid)}
+                                    disabled={actionPendingUid === user.uid}
+                                    className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                                  >
+                                    Grant access
+                                  </button>
+                                )
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">
@@ -708,13 +838,14 @@ const AdminDashboard: React.FC = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <div className="flex items-center gap-2">
-                              {user.role !== 'admin' && (
+                              {!isAdmin && (
                                 <>
                                   <button
                                     onClick={() => handleToggleUserStatus(user.uid, user.isActive)}
-                                    className={`p-1 rounded ${
-                                      user.isActive 
-                                        ? 'text-red-600 hover:bg-red-50' 
+                                    disabled={actionPendingUid === user.uid}
+                                    className={`p-1 rounded disabled:opacity-50 ${
+                                      user.isActive
+                                        ? 'text-red-600 hover:bg-red-50'
                                         : 'text-green-600 hover:bg-green-50'
                                     }`}
                                     title={user.isActive ? 'Deactivate user' : 'Activate user'}
@@ -723,8 +854,9 @@ const AdminDashboard: React.FC = () => {
                                   </button>
                                   <button
                                     onClick={() => handleDeleteUser(user.uid)}
-                                    className="p-1 text-red-600 hover:bg-red-50 rounded"
-                                    title="Delete user"
+                                    disabled={actionPendingUid === user.uid}
+                                    className="p-1 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                                    title="Delete user (checks for a live subscription first)"
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
@@ -745,6 +877,80 @@ const AdminDashboard: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Grant Complimentary Access Modal */}
+            {grantDialogUid && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-medium">Grant Complimentary Access</h3>
+                    <button onClick={() => setGrantDialogUid(null)} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <p className="text-sm text-gray-500 mb-4">
+                    This grants access without billing — it is never evidence of payment and is labeled
+                    separately from a paid subscription in the user's own subscription page.
+                  </p>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Plan</label>
+                      <select
+                        value={grantPlan}
+                        onChange={(e) => setGrantPlan(e.target.value as SubscriptionPlanId)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      >
+                        <option value="pro">Pro</option>
+                        <option value="platinum">Platinum</option>
+                        <option value="enterprise">Enterprise</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Expires in (days) — 0 for a reviewed permanent grant
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={grantExpiryDays}
+                        onChange={(e) => setGrantExpiryDays(e.target.value === '' ? '' : parseInt(e.target.value))}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Reason (required, audited)</label>
+                      <textarea
+                        value={grantReason}
+                        onChange={(e) => setGrantReason(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2"
+                        rows={2}
+                        placeholder="e.g. beta tester, support goodwill, internal QA account"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      onClick={handleGrantComplimentaryAccess}
+                      disabled={!grantReason || actionPendingUid === grantDialogUid}
+                      className="flex-1 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      Grant Access
+                    </button>
+                    <button
+                      onClick={() => setGrantDialogUid(null)}
+                      className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-white p-4 rounded-lg shadow">

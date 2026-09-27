@@ -243,22 +243,21 @@ export function Landing() {
                         <Check className="flex-shrink-0 h-5 w-5 text-green-500" />
                         <span className="text-sm text-gray-500">Time tracking</span>
                       </li>
-                      {planType !== 'free' && (
+                      {planType === 'free' ? (
                         <li className="flex space-x-3">
                           <Check className="flex-shrink-0 h-5 w-5 text-green-500" />
-                          <span className="text-sm text-gray-500">Priority support</span>
+                          <span className="text-sm text-gray-500">Includes advertising</span>
                         </li>
-                      )}
-                      {(planType === 'platinum' || planType === 'enterprise') && (
+                      ) : (
                         <li className="flex space-x-3">
                           <Check className="flex-shrink-0 h-5 w-5 text-green-500" />
-                          <span className="text-sm text-gray-500">Advanced analytics</span>
+                          <span className="text-sm text-gray-500">No advertising</span>
                         </li>
                       )}
                       {planType === 'enterprise' && (
                         <li className="flex space-x-3">
                           <Check className="flex-shrink-0 h-5 w-5 text-green-500" />
-                          <span className="text-sm text-gray-500">Custom integrations</span>
+                          <span className="text-sm text-gray-500">Custom pricing — contact sales</span>
                         </li>
                       )}
                     </ul>

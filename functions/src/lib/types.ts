@@ -32,6 +32,21 @@ export interface BillingCustomerRecord {
   lastSyncedAt: string;
 }
 
+/**
+ * billingSummaries/{uid} — owner-readable projection of BillingCustomerRecord
+ * with no Stripe customer/subscription/price IDs. Written alongside
+ * BillingCustomerRecord in syncSubscription.ts; never written from a client.
+ */
+export interface BillingSummaryRecord {
+  uid: string;
+  status: BillingStatus;
+  plan: SubscriptionPlanId | null;
+  interval: 'month' | 'year' | null;
+  paidThroughDate?: string;
+  gracePeriodEndsAt?: string;
+  cancelAtPeriodEnd: boolean;
+}
+
 export interface EntitlementRecord {
   uid: string;
   plan: SubscriptionPlanId;

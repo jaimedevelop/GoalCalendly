@@ -17,11 +17,21 @@ import PWAInstallPrompt from './components/PWAInstallPrompt.tsx';
 import { useStore } from './store';
 import { onAuthStateChange, signOutUser } from './services/auth';
 import { loadFromFirestore } from './services/db';
+import { useSubscription } from './hooks/useSubscription.js';
 
 function App() {
-  const { user, isAuthLoading, setUser, setAuthLoading, clearUserData, goals, setGoals } = useStore();
+  const { user, isAuthLoading, setUser, setAuthLoading, clearUserData, goals, setGoals, setEntitlement } = useStore();
   const activeGoalCount = goals.filter((g) => !g.completed).length;
   const loadedForUid = useRef<string | null>(null);
+
+  // Single live entitlement subscription for the whole app, pushed into the
+  // store so Header/AdvertisingManager/pricing screens all read the same
+  // server-verified plan instead of each mounting its own listener or
+  // falling back to the stale Firestore `subscriptionPlan` field.
+  const { entitlement, isLoading: isEntitlementLoading } = useSubscription(user?.uid ?? null);
+  useEffect(() => {
+    setEntitlement(entitlement, isEntitlementLoading);
+  }, [entitlement, isEntitlementLoading, setEntitlement]);
 
   useEffect(() => {
     // Listen for auth state changes

@@ -66,6 +66,16 @@ export const mutateGoals = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'requestId and type are required.');
   }
 
+  // Maintenance-window switch: during a counter migration (section 9's
+  // production cutover, step 3), the operator pauses all goal writes via a
+  // Firestore flag (instant, no redeploy) while migration runs, then resumes
+  // once verified. Fails closed on a read error, same as the entitlement
+  // fallback below never grants extra access on a transient failure.
+  const pauseSnap = await db.collection('systemFlags').doc('goalWritesPaused').get();
+  if (pauseSnap.exists && pauseSnap.data()?.paused === true) {
+    throw new HttpsError('unavailable', 'Goal writes are temporarily paused for maintenance. Please try again shortly.');
+  }
+
   const requestMarkerRef = db.collection('goalMutationRequests').doc(`${uid}_${data.requestId}`);
   const usageRef = db.collection('usage').doc(uid);
   const entitlementRef = db.collection('entitlements').doc(uid);

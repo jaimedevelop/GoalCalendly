@@ -22,7 +22,9 @@
     "test:webhook": "node --test functions/tests/stripeWebhook.test.mjs",
     "test:reconcile": "node --test functions/tests/reconcileSubscriptions.test.mjs",
     "test:checkout-portal": "node --test functions/tests/checkoutAndPortal.test.mjs",
-    "test:emulator-suite": "node --test --test-concurrency=1 tests/firestore.rules.test.mjs functions/tests/goalLimits.test.mjs functions/tests/stripeWebhook.test.mjs functions/tests/reconcileSubscriptions.test.mjs functions/tests/checkoutAndPortal.test.mjs"
+    "test:admin-access": "node --test functions/tests/adminAccessManagement.test.mjs",
+    "test:migrate": "node --test functions/tests/migrateSubscriptions.test.mjs",
+    "test:emulator-suite": "node --test --test-concurrency=1 tests/firestore.rules.test.mjs functions/tests/goalLimits.test.mjs functions/tests/stripeWebhook.test.mjs functions/tests/reconcileSubscriptions.test.mjs functions/tests/checkoutAndPortal.test.mjs functions/tests/adminAccessManagement.test.mjs functions/tests/migrateSubscriptions.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
