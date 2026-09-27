@@ -196,3 +196,48 @@ Firestore rules deploys are versioned in Firebase Console (Firestore → Rules �
 ## Reference: rehearsal scripts added this session
 
 - `functions/scripts/seedStagingFixtures.ts` — seeds 3 synthetic users into a real Firebase project (refuses to run against `goal-calendly` by name, as a safety check) representing a legacy over-limit Free user, a legacy manually-assigned paid plan, and a fully-current user. Usage: `tsx scripts/seedStagingFixtures.ts --env goal-calendly-staging`.
+
+## Step 11 pre-flight (2026-09-27) — everything checkable without live Stripe credentials
+
+Live Stripe business activation, live API key creation, and live Product/Price/Portal provisioning are account actions only the account owner can perform (Stripe requires human business/identity verification; a restricted API key must never be generated or held by an agent). This pre-flight covers everything else section 9's production cutover and this document's own open items call for, so step 11 can move straight to live-resource provisioning once the user completes `credentials.md` step 9 items 1-4.
+
+### Release artifact record
+
+| Item | Value |
+| --- | --- |
+| Release commit | `306c523f7d5b6f899e6eddbbe4d61d1a722b8bb8` (2026-09-27 19:11:58 -0400) — "step 10 completed it" |
+| Frontend build | `npm run build` — clean, no errors, `dist/index.html` + hashed assets produced |
+| Backend build | `npm --prefix functions run build` — clean, no errors |
+| Working tree | Clean at time of this check; `main` up to date with `origin/main` |
+| Production functions currently deployed | 15 functions (see list below), all `v2`, `us-central1`, `nodejs20` — matches step 10's post-fix state |
+| Production frontend live check | `https://goal-calendly.web.app/goals` → `200`; `<title>Goal Calendly</title>` (not the rollback-drill title — confirms no leftover drill artifact) |
+| Staging frontend live check | `https://goal-calendly-staging.web.app/goals` → `200` |
+| Automated test evidence | Not re-run this session (no code changed since step 10's 44/44 pass, recorded above under "Section 5 payment/security/concurrent-goal checks"). Re-run `npm run test:emulator-suite` before the actual cutover if any code changes land between now and then. |
+
+Production functions currently live (`firebase functions:list --project goal-calendly`): `checkAccountBillingStatus`, `createCheckoutSession`, `createFreeProfile`, `createPortalSession`, `deactivateAccount`, `deleteAccount`, `grantComplimentaryAccess`, `listUserAccessSummaries`, `mutateGoals`, `ping`, `reactivateAccount`, `reconcileOneCustomer`, `reconcileSubscriptionsScheduled`, `revokeComplimentaryAccess`, `stripeWebhook`, `updateOwnProfile`. `CHECKOUT_ENABLED` defaults to disabled in code (`createCheckoutSession.ts`: `process.env.CHECKOUT_ENABLED === 'true'` — any unset/non-`'true'` value is closed), matching the required "new Checkout stays off" state going into step 11.
+
+### Backup / export
+
+Not yet taken this session — do this immediately before the production cutover window, not now, so the backup reflects the actual pre-migration state:
+
+```
+gcloud firestore export gs://<a-backup-bucket>/goal-calendly-pre-step11-<date> --project goal-calendly
+```
+
+Requires `gcloud` (not installed in this working environment — confirmed absent during step 10 too) or running the equivalent export from Firebase/Google Cloud Console's Firestore import/export page. Record the resulting export path/timestamp in this file once taken. Firebase documents managed export/import in [Export and import data](https://firebase.google.com/docs/firestore/manage-data/export-import).
+
+### Items from this document's own "Not yet completed" / open-items lists that block step 11 specifically
+
+Re-checked against the lists above — everything previously open under "Not yet completed — genuine open items" is now marked resolved (2026-09-27). Two narrower items remain, both non-blocking for a live-resource provisioning pass but worth closing before the actual cutover window:
+
+- **Node 20 deprecation** (see "Known housekeeping item" above): decommissioned 2026-10-30. If step 11's live cutover will happen close to or after that date, upgrade the functions runtime first, as its own reviewed change, and re-run the full test suite — don't fold a runtime upgrade into the same deploy as enabling live Checkout.
+- **`goalcalendly.netlify.app`** (see "Incident" section above): a real, still-live, unsynced second production frontend pointed at the same live `goal-calendly` project. It will not receive any step 11 frontend deploy and will keep serving whatever code was last pushed to it directly from Netlify. Confirmed by the user to not be real user traffic, but flagging again here since step 11 is the point where this could matter (a stale frontend hitting a project with live Checkout enabled). Recommend the user either redeploy or tear it down before enabling live purchases.
+
+### What step 11 needs from the user next (per `credentials.md` step 9)
+
+1. Complete Stripe business activation (business/identity/payout info — entered directly in Stripe, never sent here).
+2. Create the live restricted `STRIPE_SECRET_KEY` with the same permission list as the tested sandbox key.
+3. Decide final launch pricing (recommended $4.99/$9.99 vs. the $3.50/$9.50 alternative in `admin_subscriptions.md` section 2) — confirm no change from the sandbox provisioning in step 5.
+4. Confirm readiness to run `firebase functions:secrets:set STRIPE_SECRET_KEY --project goal-calendly` when ready (this session will guide the command; the secret value itself must be entered directly at the CLI prompt by the user, not passed through chat or written to a file).
+
+Once those are in hand, the remaining step 11 checklist items (live Product/Price/Portal provisioning, live webhook registration, cutover sequence, first real purchase) can proceed.
