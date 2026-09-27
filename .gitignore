@@ -40,6 +40,9 @@ functions/.env.*
 config/stripe-resources.*.json
 !config/stripe-resources.example.json
 
+# Throwaway staging-rehearsal scripts/screenshots (Playwright, ad-hoc checks)
+.scratch/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

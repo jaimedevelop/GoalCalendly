@@ -31,11 +31,18 @@ function newRequestId(): string {
 
 function toResult(err: unknown): BillingActionResult {
   const firebaseError = err as { code?: string; message?: string };
+  const code = firebaseError.code ?? 'unknown';
+  // See src/services/goals.ts: the Functions SDK's "functions/internal" code for a
+  // transport-level failure carries the literal message "internal", not a real
+  // server message — never show that raw string to the user.
+  const isTransportFailure = code === 'functions/internal' || code === 'functions/unavailable';
   return {
     ok: false,
     error: {
-      code: firebaseError.code ?? 'unknown',
-      message: firebaseError.message ?? 'The server could not start this billing action.',
+      code,
+      message: isTransportFailure
+        ? "You're offline. This action couldn't be completed — check your connection and try again."
+        : firebaseError.message ?? 'The server could not start this billing action.',
     },
   };
 }

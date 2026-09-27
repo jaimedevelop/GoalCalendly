@@ -6,9 +6,17 @@ import {
   User,
   updateProfile
 } from 'firebase/auth';
-import { auth } from '../config/firebase.js';
+import { httpsCallable } from 'firebase/functions';
+import { auth, functions } from '../config/firebase.js';
 import { UserRole, SubscriptionPlan, UserProfile } from '../types.js';
-import { createUserProfile, getUserProfile, updateUserProfile } from './user.js';
+import { getUserProfile, updateUserProfile } from './user.js';
+
+// Creates users/{uid} and entitlements/{uid} together, server-side, with role/plan
+// forced to safe defaults (admin_subscriptions.md section 3/6). The client-side
+// createUserProfile() only ever wrote users/{uid}, silently leaving entitlements/{uid}
+// missing — which left every new signup with no confirmed entitlement (ads never showed,
+// subscription screen never resolved a plan). No-ops if a profile already exists.
+const createFreeProfileCallable = httpsCallable(functions, 'createFreeProfile');
 
 export interface AuthUser {
   uid: string;
@@ -40,7 +48,10 @@ const userProfileToAuthUser = (profile: UserProfile, isTrustedAdmin: boolean): A
 /** Reads the `admin` custom claim from the current ID token, forcing a refresh so a just-granted claim is picked up without requiring re-login. */
 const readTrustedAdminClaim = async (user: User): Promise<boolean> => {
   try {
-    const tokenResult = await user.getIdTokenResult();
+    // Firebase caches the ID token client-side and only refreshes it proactively
+    // near expiry; without forceRefresh, a claim granted after the cached token
+    // was minted stays invisible for up to an hour, even across reloads/re-logins.
+    const tokenResult = await user.getIdTokenResult(true);
     return tokenResult.claims.admin === true;
   } catch (error) {
     console.error('Error reading admin claim:', error);
@@ -59,8 +70,12 @@ export const signUp = async (email: string, password: string, displayName?: stri
       await updateProfile(user, { displayName });
     }
     
-    // Create user profile in Firestore
-    const userProfile = await createUserProfile(user.uid, email, displayName || null);
+    // Create user profile + entitlement together via the backend callable.
+    await createFreeProfileCallable({ displayName: displayName || null });
+    const userProfile = await getUserProfile(user.uid);
+    if (!userProfile) {
+      throw new Error('Profile creation did not complete.');
+    }
     const isTrustedAdmin = await readTrustedAdminClaim(user);
 
     return userProfileToAuthUser(userProfile, isTrustedAdmin);
@@ -78,10 +93,15 @@ export const signIn = async (email: string, password: string): Promise<AuthUser>
     
     // Get or create user profile
     let userProfile = await getUserProfile(user.uid);
-    
+
     if (!userProfile) {
-      // Create profile if it doesn't exist (for existing users)
-      userProfile = await createUserProfile(user.uid, user.email || '', user.displayName);
+      // Create profile + entitlement via the backend callable (for existing
+      // auth users whose Firestore profile is missing, e.g. legacy accounts).
+      await createFreeProfileCallable({ displayName: user.displayName || null });
+      userProfile = await getUserProfile(user.uid);
+      if (!userProfile) {
+        throw new Error('Profile creation did not complete.');
+      }
     } else {
       // Update last login time
       await updateUserProfile(user.uid, { lastLoginAt: new Date().toISOString() });
@@ -116,12 +136,13 @@ export const onAuthStateChange = (callback: (user: AuthUser | null) => void): ((
       let userProfile = await getUserProfile(user.uid);
       
       if (!userProfile) {
-        // Create profile if it doesn't exist
-        userProfile = await createUserProfile(user.uid, user.email || '', user.displayName);
+        // Create profile + entitlement via the backend callable if it doesn't exist
+        await createFreeProfileCallable({ displayName: user.displayName || null });
+        userProfile = await getUserProfile(user.uid);
       }
 
       const isTrustedAdmin = await readTrustedAdminClaim(user);
-      callback(userProfileToAuthUser(userProfile, isTrustedAdmin));
+      callback(userProfile ? userProfileToAuthUser(userProfile, isTrustedAdmin) : null);
     } else {
       callback(null);
     }

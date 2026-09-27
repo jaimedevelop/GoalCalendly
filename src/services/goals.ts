@@ -51,11 +51,19 @@ async function callMutateGoals(payload: {
     return { ok: true };
   } catch (err: unknown) {
     const firebaseError = err as { code?: string; message?: string };
+    const code = firebaseError.code ?? 'unknown';
+    // The Functions SDK throws code "functions/internal" with message literally
+    // "internal" for transport-level failures (e.g. the client is offline and the
+    // call never reached the server) — that raw string isn't a real server message
+    // and must not be shown to the user as if it were one.
+    const isTransportFailure = code === 'functions/internal' || code === 'functions/unavailable';
     return {
       ok: false,
       error: {
-        code: firebaseError.code ?? 'unknown',
-        message: firebaseError.message ?? 'The server rejected this change.',
+        code,
+        message: isTransportFailure
+          ? "You're offline. This change couldn't be saved — check your connection and try again."
+          : firebaseError.message ?? 'The server rejected this change.',
       },
     };
   }

@@ -48,9 +48,18 @@ const deleteAccountCallable = httpsCallable(functions, 'deleteAccount');
 
 function toResult(err: unknown): AdminActionResult {
   const firebaseError = err as { code?: string; message?: string };
+  const code = firebaseError.code ?? 'unknown';
+  // See src/services/goals.ts: "functions/internal" carries the literal message
+  // "internal" for a transport-level failure, not a real server message.
+  const isTransportFailure = code === 'functions/internal' || code === 'functions/unavailable';
   return {
     ok: false,
-    error: { code: firebaseError.code ?? 'unknown', message: firebaseError.message ?? 'The action failed.' },
+    error: {
+      code,
+      message: isTransportFailure
+        ? "You're offline. This action couldn't be completed — check your connection and try again."
+        : firebaseError.message ?? 'The action failed.',
+    },
   };
 }
 

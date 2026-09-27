@@ -734,12 +734,12 @@ const AdminDashboard: React.FC = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              user.role === 'admin' 
-                                ? 'bg-red-100 text-red-800' 
+                              isAdmin
+                                ? 'bg-red-100 text-red-800'
                                 : 'bg-green-100 text-green-800'
                             }`}>
-                              {user.role === 'admin' && <Crown className="w-3 h-3 mr-1" />}
-                              {user.role}
+                              {isAdmin && <Crown className="w-3 h-3 mr-1" />}
+                              {isAdmin ? 'admin' : user.role}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -981,7 +981,7 @@ const AdminDashboard: React.FC = () => {
                   <div className="ml-3">
                     <p className="text-sm font-medium text-gray-500">Admins</p>
                     <p className="text-2xl font-semibold text-gray-900">
-                      {users.filter(u => u.role === 'admin').length}
+                      {users.filter(u => u.role === 'admin' || accessByUser[u.uid]?.entitlement?.source === 'admin').length}
                     </p>
                   </div>
                 </div>
