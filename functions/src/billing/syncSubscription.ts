@@ -67,7 +67,7 @@ export async function resolveUidForSubscription(subscription: Stripe.Subscriptio
  * simply re-fetching and applying current state, which this does by always
  * taking the subscription object as truth rather than diffing event history.
  */
-export async function syncSubscriptionState(subscription: Stripe.Subscription): Promise<{ uid: string } | { skipped: string }> {
+export async function syncSubscriptionState(subscription: Stripe.Subscription, eventCreated?: number): Promise<{ uid: string } | { skipped: string }> {
   const uid = await resolveUidForSubscription(subscription);
   if (!uid) {
     return { skipped: `No Firebase UID mapped for subscription ${subscription.id} (customer ${subscription.customer}).` };
@@ -106,22 +106,22 @@ export async function syncSubscriptionState(subscription: Stripe.Subscription): 
     const [existingBillingSnap, complimentarySnap] = await Promise.all([tx.get(billingCustomerRef), tx.get(complimentaryRef)]);
     const existingBilling = existingBillingSnap.data() as BillingCustomerRecord | undefined;
 
-    // Reject a stale event: if we already recorded this exact subscription
-    // at a status/period combination that is at least as current, skip.
-    // Stripe subscriptions carry no simple monotonic version counter, so we
-    // approximate using current_period_end + status, which only moves
-    // forward for the same subscription under normal lifecycle progression.
+    // Billing period/status are NOT a version: upgrades and cancellation
+    // settings can change without changing either. Reject only an older
+    // event timestamp; reconciliation (no event timestamp) always reapplies.
     const newPeriodEnd = primaryItem.current_period_end;
-    const isSameOrOlder =
-      existingBilling?.stripeSubscriptionId === subscription.id &&
-      existingBilling.status === mapStripeStatus(subscription.status) &&
-      existingBilling.paidThroughDate !== undefined &&
-      new Date(existingBilling.paidThroughDate).getTime() >= newPeriodEnd * 1000;
+    if (eventCreated && existingBilling?.lastStripeEventCreated && eventCreated < existingBilling.lastStripeEventCreated) return;
 
     const status = mapStripeStatus(subscription.status);
     const plan: SubscriptionPlanId | null = mapped?.plan ?? existingBilling?.plan ?? null;
     const interval: BillingInterval | null = mapped?.interval ?? existingBilling?.interval ?? null;
-    const paidThroughDate = new Date(newPeriodEnd * 1000).toISOString();
+    // A failed renewal advances Stripe's period too, but does not pay for it.
+    // Only active subscriptions extend the last successfully paid window.
+    const latestInvoice = subscription.latest_invoice;
+    const invoicePaid = typeof latestInvoice === 'object' && latestInvoice?.status === 'paid';
+    const paidThroughDate = status === 'active' && invoicePaid
+      ? new Date(newPeriodEnd * 1000).toISOString()
+      : existingBilling?.paidThroughDate;
 
     // An initial failed payment never earns the renewal grace period —
     // only set gracePeriodEndsAt when the subscription had previously
@@ -134,11 +134,6 @@ export async function syncSubscriptionState(subscription: Stripe.Subscription): 
       gracePeriodEndsAt = undefined;
     }
 
-    if (isSameOrOlder) {
-      tx.set(billingCustomerRef, { lastSyncedAt: new Date().toISOString() }, { merge: true });
-      return;
-    }
-
     const billingRecord: BillingCustomerRecord = {
       uid,
       stripeCustomerId: subscription.customer as string,
@@ -147,10 +142,11 @@ export async function syncSubscriptionState(subscription: Stripe.Subscription): 
       plan,
       interval,
       status,
-      paidThroughDate,
+      ...(paidThroughDate ? { paidThroughDate } : {}),
       ...(gracePeriodEndsAt ? { gracePeriodEndsAt } : {}),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       lastSyncedAt: new Date().toISOString(),
+      ...((eventCreated ?? existingBilling?.lastStripeEventCreated) ? { lastStripeEventCreated: eventCreated ?? existingBilling?.lastStripeEventCreated } : {}),
     };
     tx.set(billingCustomerRef, billingRecord);
 
@@ -164,7 +160,7 @@ export async function syncSubscriptionState(subscription: Stripe.Subscription): 
       status,
       plan,
       interval,
-      paidThroughDate,
+      ...(paidThroughDate ? { paidThroughDate } : {}),
       ...(gracePeriodEndsAt ? { gracePeriodEndsAt } : {}),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
     };

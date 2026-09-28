@@ -41,7 +41,7 @@ function toResult(err: unknown): BillingActionResult {
     error: {
       code,
       message: isTransportFailure
-        ? "You're offline. This action couldn't be completed — check your connection and try again."
+        ? "We couldn't reach billing or complete the request. Check your connection and try again."
         : firebaseError.message ?? 'The server could not start this billing action.',
     },
   };

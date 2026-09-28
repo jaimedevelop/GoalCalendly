@@ -55,12 +55,13 @@ npm run stripe:verify -- --env test
 
 This is read-only: it checks each Price is active, has the right currency,
 interval, and amount, and that the Portal configuration exists and is
-active. Add `APP_ORIGIN=https://...` once a webhook endpoint is deployed
-(step 6) to also verify it's registered and enabled. Exits non-zero with
+active. Set `STRIPE_WEBHOOK_URL=https://us-central1-PROJECT.cloudfunctions.net/stripeWebhook`
+to verify the exact backend endpoint, mode, enabled status, and required events.
+This is required for live verification; APP_ORIGIN is the separate website URL. Exits non-zero with
 every mismatch listed if anything is wrong — resolve all of them before
 enabling Checkout.
 
-## Testing Checkout and Portal end to end (step 7)
+## Testing Checkout and Portal session creation (step 7)
 
 The automated test suite (`npm run test:emulator-suite`) runs with
 `CHECKOUT_ENABLED=false` and a placeholder `STRIPE_SECRET_KEY`, so it only
@@ -110,3 +111,21 @@ never overlaps with the test file.
   in the Stripe Dashboard directly. Per section 8, a price change needs a
   *new* Price ID and an explicit policy for existing subscribers; don't
   edit an existing Price in place.
+
+## Current endpoint inventory and PowerShell commands
+
+Production test destination: `https://stripewebhook-wpkahzvajq-uc.a.run.app`.
+Staging test destination: `https://stripewebhook-secrj7wtva-uc.a.run.app`.
+Both were verified September 27, 2026. Set STRIPE_WEBHOOK_URL to the exact registered destination for the environment being checked. Website APP_ORIGIN is not the webhook address.
+
+From the repository root, with the API key loaded securely into the process environment and matching non-secret Price/Portal IDs configured:
+
+```powershell
+npx tsx functions/scripts/verifyStripeConfig.ts --env test
+npx tsx functions/scripts/provisionStripe.ts --env live
+npx tsx functions/scripts/verifyStripeConfig.ts --env live
+```
+
+Live commands are deferred: the user intentionally has not created a live key. Complete sandbox acceptance in HANDOVER.md before live setup. These direct commands avoid PowerShell/npm forwarding that can drop the --env flag. Never use an inline key literal in shell history.
+
+The manual script above proves URL creation and session reuse only. It does not complete a hosted payment or exercise Portal changes. Full sandbox acceptance remains tracked in HANDOVER.md and does not require a live key.

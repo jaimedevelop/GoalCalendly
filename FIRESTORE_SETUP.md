@@ -1,150 +1,35 @@
-# Firestore Setup Guide
+# Firestore setup and access troubleshooting
 
-## 🚨 **Fixing PERMISSION_DENIED Error**
+Updated September 27, 2026. The former open-development rules and client role examples are obsolete.
 
-The `PERMISSION_DENIED` error occurs because Firestore security rules are blocking access. Here's how to fix it:
+`firestore.rules` is the authoritative access policy; `firestore.indexes.json` contains the query indexes. Deploy from the repository root:
 
-### Step 1: Access Firebase Console
-
-1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Select your project: **goal-calendly**
-3. Navigate to **Firestore Database** in the left sidebar
-
-### Step 2: Update Security Rules
-
-1. Click on the **Rules** tab
-2. You'll see the current rules (probably restrictive)
-3. Replace the existing rules with this **development-friendly** version:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Allow read/write access to all documents for development
-    match /{document=**} {
-      allow read, write: if true;
-    }
-  }
-}
+```powershell
+firebase deploy --only "firestore:rules,firestore:indexes" --project goal-calendly-staging
 ```
 
-4. Click **Publish** to save the changes
+Use `--project goal-calendly` for the verified production release. Never replace the maintained policy with public or authenticated-user-wide access rules.
 
-### Step 3: Test the Connection
+## Current data boundary
 
-After updating the rules, test your connection:
+- Owners read their goals; all goal writes go through authenticated `mutateGoals`, preserving atomic quotas and usage counters.
+- Profile creation uses `createFreeProfile`. Clients cannot assign privileged profile fields.
+- Admin authorization uses the Firebase Auth `admin` custom claim, not a profile role or special email.
+- Entitlements, usage, billing, audit logs, and maintenance flags are backend-owned. Owners can read only the permitted projections. Internal billing customer records remain private.
+- Complimentary access and account lifecycle actions use audited admin callables.
 
-```bash
-npm run test:firestore
+## Diagnose permission errors
+
+1. Confirm sign-in and the intended Firebase project. Staging and production accounts are separate.
+2. Refresh the ID token or sign out/in after an admin claim changes.
+3. Verify goal writes call `mutateGoals`. Old clients writing directly to Firestore are intentionally rejected; refresh the installed PWA.
+4. Check Functions in `us-central1`, deployed rules/indexes, and the goal-write maintenance flag.
+5. A missing-index error requires the matching index, not broader permissions.
+6. Use emulators for debugging. Legacy scripts that write goals or privileged profile fields directly are not a production repair path.
+
+```powershell
+$env:FUNCTIONS_DISCOVERY_TIMEOUT = '60'
+firebase emulators:exec --only "functions,firestore,auth" --project demo-goalcalendly "npm run test:emulator-suite"
 ```
 
-You should see:
-```
-✅ Write operation successful
-✅ Read operation successful
-✅ Cleanup successful
-🎉 Firestore connection test completed successfully!
-```
-
-## 🔒 **Production Security Rules**
-
-⚠️ **WARNING**: The above rules allow unrestricted access and should only be used for development.
-
-For production, use more restrictive rules like:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Goals collection - require authentication
-    match /goals/{goalId} {
-      allow read, write: if request.auth != null;
-    }
-    
-    // Shared goals - allow read for anyone, write for authenticated users
-    match /sharedGoals/{shareId} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-    
-    // Test collection - allow for development only
-    match /test/{testId} {
-      allow read, write: if true;
-    }
-  }
-}
-```
-
-## 🔧 **Alternative: Firebase Authentication Setup**
-
-If you want to implement proper authentication:
-
-### 1. Enable Authentication
-
-1. In Firebase Console, go to **Authentication**
-2. Click **Get started**
-3. Choose sign-in methods (Email/Password, Google, etc.)
-
-### 2. Update Your App
-
-Add authentication to your React app:
-
-```bash
-npm install firebase
-```
-
-```typescript
-// src/auth/firebase-auth.ts
-import { getAuth, signInAnonymously } from 'firebase/auth';
-import app from '../config/firebase';
-
-const auth = getAuth(app);
-
-// Sign in anonymously for development
-export const signInAnonymous = () => {
-  return signInAnonymously(auth);
-};
-
-export { auth };
-```
-
-### 3. Use Authentication in Your App
-
-```typescript
-// In your main component
-import { signInAnonymous } from './auth/firebase-auth';
-
-useEffect(() => {
-  // Sign in anonymously when app loads
-  signInAnonymous().then(() => {
-    console.log('Signed in anonymously');
-  });
-}, []);
-```
-
-## 🎯 **Quick Fix Summary**
-
-**For immediate development access:**
-
-1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Select project: **goal-calendly**
-3. Firestore Database → Rules
-4. Replace rules with: `allow read, write: if true;`
-5. Click **Publish**
-6. Test with: `npm run test:firestore`
-
-## 📞 **Still Having Issues?**
-
-If you continue to have problems:
-
-1. Run the diagnostic: `npm run diagnose:firestore`
-2. Check that Firestore is enabled in your Firebase project
-3. Verify your Firebase configuration in `src/config/firebase.ts`
-4. Ensure you're using the correct project ID
-
-## 🔍 **Understanding the Error**
-
-- **Code 7 PERMISSION_DENIED**: Firestore security rules are blocking the operation
-- **Not related to**: Username/password (Firestore doesn't use traditional auth)
-- **Common cause**: Default security rules deny all access
-- **Solution**: Update security rules or implement authentication
+See [ADMIN_SETUP.md](./ADMIN_SETUP.md) and [DEPLOYMENT_RUNBOOK.md](./DEPLOYMENT_RUNBOOK.md) for claims, migration, maintenance and rollback.

@@ -20,7 +20,7 @@ This guide tells you what to create, when to create it, and what to give the dev
 | Webhook | An address where Stripe tells our backend that a payment or subscription changed |
 | Secret Manager | Google's protected storage for backend keys |
 
-Our planned arrangement is: **DigitalOcean or Netlify hosts the website; Firebase runs login, the database, and backend functions; Stripe collects payments.** You need only one of the frontend hosting providers.
+Current arrangement: **Firebase Hosting serves staging and production; Firebase runs login, the database, and functions; Stripe handles billing.** DigitalOcean/Netlify instructions below are optional alternatives, not unfinished setup requirements.
 
 ## What you need, and when
 
@@ -238,20 +238,20 @@ Fill this table with non-secret information only:
 
 | Item | Staging | Production |
 | --- | --- | --- |
-| Firebase project ID | TO FILL | TO FILL LATER |
+| Firebase project ID | goal-calendly-staging | goal-calendly |
 | Firebase web app ID / public config location | TO FILL | TO FILL LATER |
-| Function region (developer chooses) | TO FILL | TO FILL LATER |
-| Frontend provider and app/site ID | TO FILL | TO FILL LATER |
-| Frontend URL | TO FILL | TO FILL LATER |
+| Function region (developer chooses) | us-central1 | us-central1 |
+| Frontend provider and app/site ID | Firebase Hosting: goal-calendly-staging | Firebase Hosting: goal-calendly |
+| Frontend URL | https://goal-calendly-staging.web.app | https://goal-calendly.web.app |
 | Stripe account ID / sandbox name | TO FILL | TO FILL LATER |
 | Pro monthly Price ID | price_1UJzWf33BJJtidgHcbw8SF8v | TO FILL LATER |
 | Pro annual Price ID | price_1UJzWf33BJJtidgHryhxLRyh | TO FILL LATER |
 | Platinum monthly Price ID | price_1UJzWf33BJJtidgHuc1yeQZE | TO FILL LATER |
 | Platinum annual Price ID | price_1UJzWg33BJJtidgHNszPa61u | TO FILL LATER |
 | Portal configuration ID | bpc_1UJzXR33BJJtidgH4IFzNM68 | TO FILL LATER |
-| Webhook URL / endpoint ID | WAIT FOR DEVELOPER (step 6) | WAIT FOR DEVELOPER |
-| `STRIPE_SECRET_KEY` saved? | YES — sandbox key provisioned resources; not yet bound to a deployed backend secret (that happens per credentials.md step 7 once a Firebase staging project exists) | NO |
-| `STRIPE_WEBHOOK_SECRET` saved? | YES / NO, no value | YES / NO, no value |
+| Webhook URL / endpoint ID | https://stripewebhook-secrj7wtva-uc.a.run.app (we_1UKTEb33BJJtidgHg1YTcdfq) | https://stripewebhook-wpkahzvajq-uc.a.run.app (we_1UK6cJ33BJJtidgHVWxoiJD8; test mode) |
+| `STRIPE_SECRET_KEY` saved? | YES - test key bound per deployment record | YES - TEST key intentionally configured; no live key created until sandbox testing is complete |
+| `STRIPE_WEBHOOK_SECRET` saved? | Test endpoint secret bound per deployment record | Test endpoint secret bound; live endpoint secret pending |
 | Intended admin Firebase UID | TO FILL | TO FILL LATER |
 | Public support/contact email | TO FILL | TO FILL LATER |
 
@@ -268,7 +268,11 @@ The developer provisions the admin claim using the intended account's Firebase U
 
 If a private key is accidentally posted publicly, rotate/revoke it in its provider and update the backend secret. Deleting the message or file alone does not invalidate the exposed key.
 
-## Quick checklist for today
+## Original onboarding checklist (historical)
+
+Firebase projects, staging configuration, sandbox setup, and Firebase Hosting are completed per the deployment record. These original unchecked prompts do not reopen completed work. Remaining live setup is step 9; use the status table above.
+
+### Original prompts
 
 - [ ] I can sign in to Firebase and Stripe.
 - [ ] I identified the existing Firebase project without changing its data.

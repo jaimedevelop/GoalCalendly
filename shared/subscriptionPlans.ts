@@ -100,11 +100,5 @@ export function isUnderActiveGoalLimit(plan: SubscriptionPlanId, currentActiveCo
   return currentActiveCount < limit;
 }
 
-/**
- * PLACEHOLDER — not a real destination. admin_subscriptions.md section 1/3
- * flags "a real contact destination" for Enterprise as an open decision the
- * product owner has not yet made (STEP1_BASELINE.md open item #2). Replace
- * this with the actual sales contact email/form before this goes live, and
- * remove this comment once it is.
- */
-export const ENTERPRISE_CONTACT_EMAIL = 'sales@goalcalendly.example';
+/** Public contact destination confirmed by the product owner. */
+export const ENTERPRISE_CONTACT_EMAIL = 'ezboss.business@gmail.com';

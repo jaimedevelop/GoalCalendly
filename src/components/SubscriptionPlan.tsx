@@ -33,8 +33,9 @@ const SubscriptionPlanComponent: React.FC<SubscriptionPlanProps> = ({ user, curr
   const [portalPending, setPortalPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const hasPaidBillingRecord = entitlement?.source === 'stripe';
   const { summary: billingSummary } = useBillingSummary(user.uid);
+  const hasPaidBillingRecord = entitlement?.source === 'stripe' ||
+    ['active', 'past_due', 'trialing', 'unpaid', 'paused', 'incomplete'].includes(billingSummary?.status ?? '');
   const isPastDue = billingSummary?.status === 'past_due';
 
   const getPlanIcon = (plan: SubscriptionPlan) => {
@@ -132,6 +133,20 @@ const SubscriptionPlanComponent: React.FC<SubscriptionPlanProps> = ({ user, curr
           </span>
         )}
       </div>
+
+      {!isAdmin && hasPaidBillingRecord && (
+        <div className="mb-4 text-sm text-gray-600">
+          <p>Change between Pro and Platinum in billing. Stripe shows any price adjustment before you confirm.</p>
+          <button
+            onClick={handleManageBilling}
+            disabled={portalPending}
+            className="mt-2 underline disabled:opacity-50"
+          >
+            {billingSummary?.cancelAtPeriodEnd ? 'Manage scheduled cancellation in Stripe' : 'Cancel subscription in Stripe'}
+          </button>
+          <p className="mt-1">Opens Stripe billing for confirmation. Cancellation takes effect at the end of your paid period.</p>
+        </div>
+      )}
 
       {entitlement?.source === 'complimentary' && (
         <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-3 text-sm text-purple-800">
@@ -270,12 +285,12 @@ const SubscriptionPlanComponent: React.FC<SubscriptionPlanProps> = ({ user, curr
                       </a>
                     ) : isPurchasable ? (
                       <button
-                        onClick={() => handleUpgradeClick(planType)}
-                        disabled={pendingPlan !== null}
+                        onClick={() => hasPaidBillingRecord ? handleManageBilling() : handleUpgradeClick(planType)}
+                        disabled={pendingPlan !== null || portalPending}
                         className="text-sm px-3 py-1 bg-white border border-current rounded hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1"
                       >
                         {pendingPlan === planType && <Loader2 className="w-3 h-3 animate-spin" />}
-                        Upgrade
+                        {hasPaidBillingRecord ? 'Change in billing' : 'Upgrade'}
                       </button>
                     ) : null}
                   </div>

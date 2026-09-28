@@ -1,123 +1,33 @@
-# Security & Deployment Guide
+# Security and deployment guide
 
-## 🚨 CRITICAL: Before GitHub Upload
+Updated September 27, 2026. Older examples granting broad authenticated access or trusting `users.role` are obsolete. Deploy the checked-in policy and backend.
 
-### 1. Remove Sensitive Files from Git History
-If you've already committed sensitive files, you need to remove them from git history:
+## Configuration
 
-```bash
-# Remove .env from git tracking (if previously committed)
-git rm --cached .env
+Firebase web configuration in `VITE_FIREBASE_*` identifies the project publicly. Authentication, Firestore rules, and backend authorization protect access. All `VITE_*` values are browser-visible.
 
-# Add and commit the security changes
-git add .gitignore .env.example src/config/firebase.ts SECURITY_DEPLOYMENT.md
-git commit -m "Security: Move Firebase config to environment variables"
+Stripe API keys and webhook signing secrets belong in the matching Firebase project's Secret Manager. Never put them in browser configuration, Markdown, source control, or command arguments. Test/live resources must match their key. Each webhook destination has its own signing secret.
+
+```powershell
+firebase functions:secrets:set STRIPE_SECRET_KEY --project goal-calendly
+firebase functions:secrets:set STRIPE_WEBHOOK_SECRET --project goal-calendly
 ```
 
-### 2. Verify .env is Ignored
-Make sure your `.env` file is NOT being tracked:
-```bash
-git status
-# .env should NOT appear in the list
+These commands prompt for secret input. Bind and redeploy affected functions after saving a secret; saving alone does not update deployed versions. See [credentials.md](./credentials.md).
+
+Environment files and local secrets are ignored by Git. If a private key was exposed, revoke/rotate it first: removing a tracked file does not remove history or invalidate the credential. Public Firebase web configuration does not grant Admin SDK access.
+
+## Authorization and release
+
+- Deploy `firestore.rules` and `firestore.indexes.json`, not alternate permissive console examples.
+- Provision admin custom claims using `functions/scripts/setAdminClaim.ts`.
+- Backend callables own goal limits, billing, and entitlement changes. Client role/plan fields are not payment evidence or authority.
+- Stripe webhooks verify raw-body signatures. Checkout return URLs are not payment evidence.
+- Keep `CHECKOUT_ENABLED=false` until live configuration and cutover checks pass.
+- Run frontend/backend builds, `npm run functions:test`, and the emulator suite in [FIRESTORE_SETUP.md](./FIRESTORE_SETUP.md).
+
+```powershell
+node scripts/verify-deployment.mjs https://goal-calendly.web.app goal-calendly
 ```
 
-## 🔐 Environment Variables Setup
-
-### For Local Development
-1. Copy `.env.example` to `.env`
-2. Fill in your actual Firebase credentials in `.env`
-3. Never commit `.env` to git
-
-### For Netlify Deployment
-1. Go to your Netlify site dashboard
-2. Navigate to Site settings > Environment variables
-3. Add these environment variables:
-   - `VITE_FIREBASE_API_KEY` = `AIzaSyAOGuFBMzXiM9YDMQKIFdKZAz-VVdIitp4`
-   - `VITE_FIREBASE_AUTH_DOMAIN` = `goal-calendly.firebaseapp.com`
-   - `VITE_FIREBASE_PROJECT_ID` = `goal-calendly`
-   - `VITE_FIREBASE_STORAGE_BUCKET` = `goal-calendly.firebasestorage.app`
-   - `VITE_FIREBASE_MESSAGING_SENDER_ID` = `219082198777`
-   - `VITE_FIREBASE_APP_ID` = `1:219082198777:web:c50bea586218335f705c28`
-   - `VITE_FIREBASE_MEASUREMENT_ID` = `G-WCL14RTDH7`
-
-## 🛡️ Firebase Security Rules
-
-### Current Firestore Rules
-Your current `firestore.rules` file should be reviewed for production:
-
-```javascript
-// Make sure your rules are restrictive enough for production
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Review these rules before production deployment
-    match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}
-```
-
-### Recommended Production Rules
-Consider implementing more restrictive rules:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Users can only access their own data
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Goals are user-specific
-    match /goals/{goalId} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid == resource.data.userId;
-    }
-    
-    // Admin-only access to user management
-    match /admin/{document=**} {
-      allow read, write: if request.auth != null && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-  }
-}
-```
-
-## 🚀 Deployment Checklist
-
-### Before GitHub Upload:
-- [ ] `.env` is in `.gitignore`
-- [ ] Firebase config uses environment variables
-- [ ] No hardcoded secrets in code
-- [ ] `.env.example` is included for reference
-
-### Before Netlify Deployment:
-- [ ] Environment variables configured in Netlify
-- [ ] Firebase security rules reviewed
-- [ ] Build command: `npm run build`
-- [ ] Publish directory: `dist`
-
-### After Deployment:
-- [ ] Test authentication works
-- [ ] Test database operations
-- [ ] Verify admin functions work
-- [ ] Check browser console for errors
-
-## 🔍 Security Best Practices
-
-1. **Never commit sensitive data** to version control
-2. **Use environment variables** for all configuration
-3. **Review Firebase security rules** regularly
-4. **Monitor Firebase usage** and set up billing alerts
-5. **Enable Firebase App Check** for production
-6. **Use HTTPS only** (Netlify provides this automatically)
-
-## 📞 Support
-
-If you encounter issues:
-1. Check browser console for errors
-2. Verify environment variables are set correctly
-3. Test Firebase connection in development first
-4. Review Netlify build logs for deployment issues
+Use explicit Firebase projects and Hosting targets for every deployment. Follow [DEPLOYMENT_RUNBOOK.md](./DEPLOYMENT_RUNBOOK.md) for cutover, monitoring, and rollback. Rollbacks must preserve backend-owned billing fields and deny direct goal writes. Delivery evidence and live-launch gaps are in [HANDOVER.md](./HANDOVER.md).

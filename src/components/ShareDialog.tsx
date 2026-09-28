@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useState } from 'react';
 import { Goal } from '../types';
 import { Copy, Check } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -11,19 +11,22 @@ interface ShareDialogProps {
 
 export function ShareDialog({ onClose, goals }: ShareDialogProps) {
   const [copied, setCopied] = useState(false);
-  
-  const generateShareUrl = useCallback(async () => {
-    const shareId = crypto.randomUUID();
-    await storeSharedGoals(shareId, goals);
-    const baseUrl = window.location.origin + window.location.pathname;
-    return `${baseUrl}?share=${shareId}`;
-  }, [goals]);
-
+  const [snapshot] = useState(() => goals);
+  const [shareId] = useState(() => crypto.randomUUID());
+  const [attempt, setAttempt] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   
   React.useEffect(() => {
-    generateShareUrl().then(setShareUrl);
-  }, [generateShareUrl]);
+    let cancelled = false;
+    setError(null);
+    storeSharedGoals(shareId, snapshot).then(() => {
+      if (!cancelled) setShareUrl(`${window.location.origin}${window.location.pathname}?share=${shareId}`);
+    }).catch(() => {
+      if (!cancelled) setError('Could not create the share link. Check your connection and try again.');
+    });
+    return () => { cancelled = true; };
+  }, [shareId, snapshot, attempt]);
 
   const handleCopy = async () => {
     if (!shareUrl) return;
@@ -39,8 +42,12 @@ export function ShareDialog({ onClose, goals }: ShareDialogProps) {
   if (!shareUrl) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6">
-          <p>Generating share link...</p>
+        <div role="dialog" aria-label="Share Goals" className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+          {error ? <p role="alert">{error}</p> : <p role="status">Generating share link...</p>}
+          <div className="flex justify-end gap-2 mt-4">
+            {error && <button onClick={() => setAttempt(value => value + 1)} className="px-4 py-2 rounded bg-blue-600 text-white">Try again</button>}
+            <button onClick={onClose} className="px-4 py-2 rounded bg-gray-100">Close</button>
+          </div>
         </div>
       </div>
     );

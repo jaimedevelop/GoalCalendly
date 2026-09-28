@@ -19,7 +19,7 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import Stripe from 'stripe';
-import { db, requireAdmin } from '../lib/firebaseAdmin.js';
+import { db, auth, requireAdmin } from '../lib/firebaseAdmin.js';
 import { syncSubscriptionState } from './syncSubscription.js';
 import { computeEffectiveEntitlement } from '../lib/entitlements.js';
 import type { BillingCustomerRecord, EntitlementRecord, ComplimentaryGrantRecord } from '../lib/types.js';
@@ -42,7 +42,7 @@ async function reconcileBillingRecord(stripe: Stripe, record: BillingCustomerRec
     return { uid: record.uid, outcome: 'no-change', detail: 'No subscription on record.' };
   }
   try {
-    const subscription = await stripe.subscriptions.retrieve(record.stripeSubscriptionId);
+    const subscription = await stripe.subscriptions.retrieve(record.stripeSubscriptionId, { expand: ['latest_invoice'] });
     await syncSubscriptionState(subscription);
     return { uid: record.uid, outcome: 'resynced' };
   } catch (err) {
@@ -64,7 +64,7 @@ async function expireStaleGracePeriod(record: BillingCustomerRecord): Promise<Re
   const complimentary = complimentarySnap.data() as ComplimentaryGrantRecord | undefined;
 
   const entitlement = computeEffectiveEntitlement({
-    isTrustedAdmin: false,
+    isTrustedAdmin: (await auth.getUser(record.uid).catch(() => null))?.customClaims?.admin === true,
     complimentaryGrant: complimentary ? { plan: complimentary.plan, expiresAt: complimentary.expiresAt } : null,
     billing: { status: record.status, plan: record.plan, paidThroughDate: record.paidThroughDate, gracePeriodEndsAt: undefined },
   });
@@ -80,7 +80,8 @@ async function expireStaleGracePeriod(record: BillingCustomerRecord): Promise<Re
   };
 
   await db.runTransaction(async (tx) => {
-    tx.set(db.collection('billingCustomers').doc(record.uid), { gracePeriodEndsAt: null }, { merge: true });
+    // Preserve the expired deadline: clearing it would start a fresh grace
+    // period when the next past_due webhook/reconciliation arrives.
     tx.set(db.collection('entitlements').doc(record.uid), entitlementRecord);
   });
 
@@ -95,7 +96,7 @@ async function expireStaleComplimentaryGrant(grant: ComplimentaryGrantRecord): P
   const billing = billingSnap.data() as BillingCustomerRecord | undefined;
 
   const entitlement = computeEffectiveEntitlement({
-    isTrustedAdmin: false,
+    isTrustedAdmin: (await auth.getUser(grant.uid).catch(() => null))?.customClaims?.admin === true,
     complimentaryGrant: null, // this grant is now expired
     billing: billing ? { status: billing.status, plan: billing.plan, paidThroughDate: billing.paidThroughDate, gracePeriodEndsAt: billing.gracePeriodEndsAt } : null,
   });
@@ -125,7 +126,7 @@ export async function runReconciliation(): Promise<ReconcileResult[]> {
     const graceResult = await expireStaleGracePeriod(record);
     if (graceResult) {
       results.push(graceResult);
-      continue; // re-synced via expiry; a Stripe refetch isn't needed this pass
+      // Still fetch Stripe: a missed recovery event must restore paid access.
     }
 
     if (record.status === 'active' || record.status === 'past_due') {

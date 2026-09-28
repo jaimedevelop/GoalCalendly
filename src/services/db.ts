@@ -1,6 +1,7 @@
 import { Goal, Campaign, AdvertisingWay } from '../types';
 import { db } from '../config/firebase';
 import { getCurrentUser } from './auth.js';
+import { serializeSharedGoals } from './sharedGoalData';
 import { 
   collection, 
   doc, 
@@ -148,23 +149,21 @@ export async function saveToFirestore(goals: Goal[]): Promise<boolean> {
   }
 }
 
-export async function loadFromFirestore(): Promise<Goal[]> {
+export async function loadFromFirestore(authenticatedUid?: string): Promise<Goal[]> {
   try {
     console.log('[DEBUG] loadFromFirestore: Starting load operation');
-    const currentUser = await getCurrentUser();
+    const currentUser = authenticatedUid ? { uid: authenticatedUid } : await getCurrentUser();
     console.log('[DEBUG] loadFromFirestore: currentUser =', currentUser ? 'authenticated' : 'null');
     if (!currentUser) {
       console.error('User not authenticated');
-      return [];
+      throw new Error('Sign in to load your goals.');
     }
 
     const goalsCollection = collection(db, GOALS_COLLECTION);
     console.log('[DEBUG] loadFromFirestore: Current user UID =', currentUser.uid);
     const goalsQuery = query(
       goalsCollection,
-      where('type', '==', 'goal'),
       where('userId', '==', currentUser.uid), // Filter by user ID
-      orderBy('updatedAt', 'desc')
     );
     
     console.log('[DEBUG] loadFromFirestore: Executing query with userId filter =', currentUser.uid);
@@ -172,7 +171,12 @@ export async function loadFromFirestore(): Promise<Goal[]> {
     const goals: Goal[] = [];
     console.log('[DEBUG] loadFromFirestore: Query returned', querySnapshot.size, 'documents');
     
-    querySnapshot.forEach((doc) => {
+    // This collection contains goals only. Current backend writes do not carry
+    // the legacy `type` discriminator; filtering by it silently hid new goals.
+    // Sort locally so both legacy and current records need only the owner index.
+    const goalDocuments = [...querySnapshot.docs].sort((a, b) =>
+      (b.data().updatedAt?.toMillis?.() ?? 0) - (a.data().updatedAt?.toMillis?.() ?? 0));
+    goalDocuments.forEach((doc) => {
       const data = doc.data();
       console.log('[DEBUG] loadFromFirestore: Processing goal - ID:', data.id, 'Name:', data.name, 'UserId:', data.userId, 'Expected UserId:', currentUser.uid, 'Match:', data.userId === currentUser.uid);
       
@@ -203,7 +207,7 @@ export async function loadFromFirestore(): Promise<Goal[]> {
     return goals;
   } catch (error) {
     console.error('Error loading from Firestore:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -333,7 +337,7 @@ export async function storeSharedGoalsInFirestore(shareId: string, goals: Goal[]
     
     await setDoc(sharedGoalsDoc, {
       id: shareId,
-      goals,
+      goals: serializeSharedGoals(goals),
       timestamp: serverTimestamp(),
       expiresAt: Timestamp.fromDate(new Date(Date.now() + (24 * 60 * 60 * 1000))) // 24 hours expiry
     });

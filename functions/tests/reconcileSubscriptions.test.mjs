@@ -125,3 +125,16 @@ test('reconcileOneCustomer, called by a real trusted admin, reports no-change fo
   const result = await reconcileOneCustomerAsAdmin({ uid: targetUid });
   assert.equal(result.data.outcome, 'no-change');
 });
+
+test('scheduled reconciliation expires grace without restarting its deadline', async () => {
+  process.env.STRIPE_SECRET_KEY='sk_test_emulator_fixture_only';
+  const {runReconciliation}=await import('../lib/functions/src/billing/reconcileSubscriptions.js');
+  const expired=new Date(Date.now()-86400000).toISOString();
+  await testEnv.withSecurityRulesDisabled(async ctx=>{
+    await ctx.firestore().collection('billingCustomers').doc(targetUid).set({uid:targetUid,stripeCustomerId:'cus_fixture',plan:'pro',status:'past_due',paidThroughDate:expired,gracePeriodEndsAt:expired});
+    await ctx.firestore().collection('entitlements').doc(targetUid).set({plan:'pro'});
+  });
+  await runReconciliation();await runReconciliation();
+  assert.equal((await getEntitlement(targetUid)).plan,'free');
+  await testEnv.withSecurityRulesDisabled(async ctx=>assert.equal((await ctx.firestore().collection('billingCustomers').doc(targetUid).get()).data().gracePeriodEndsAt,expired));
+});

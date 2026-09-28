@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
@@ -22,7 +22,10 @@ import { useSubscription } from './hooks/useSubscription.js';
 function App() {
   const { user, isAuthLoading, setUser, setAuthLoading, clearUserData, goals, setGoals, setEntitlement } = useStore();
   const activeGoalCount = goals.filter((g) => !g.completed).length;
-  const loadedForUid = useRef<string | null>(null);
+  const [goalLoadAttempt, setGoalLoadAttempt] = useState(0);
+  const [goalLoadError, setGoalLoadError] = useState(false);
+  const [goalsLoading, setGoalsLoading] = useState(false);
+  const uid = user?.uid;
 
   // Single live entitlement subscription for the whole app, pushed into the
   // store so Header/AdvertisingManager/pricing screens all read the same
@@ -42,7 +45,6 @@ function App() {
       if (!user) {
         console.log('[DEBUG] User logged out, clearing user data');
         clearUserData();
-        loadedForUid.current = null;
       }
 
       setUser(user);
@@ -56,16 +58,19 @@ function App() {
   // (including /subscription on a direct visit) sees the real active-goal
   // count rather than a stale or hard-coded value.
   useEffect(() => {
-    if (!user || loadedForUid.current === user.uid) return;
-    loadedForUid.current = user.uid;
-
-    loadFromFirestore()
-      .then((firestoreGoals) => setGoals(firestoreGoals ?? []))
+    if (!uid) return;
+    let cancelled = false;
+    setGoalsLoading(true);
+    setGoalLoadError(false);
+    loadFromFirestore(uid)
+      .then((firestoreGoals) => { if (!cancelled) setGoals(firestoreGoals); })
       .catch((error) => {
         console.error('Error loading goals:', error);
-        setGoals([]);
-      });
-  }, [user, setGoals]);
+        if (!cancelled) setGoalLoadError(true);
+      })
+      .finally(() => { if (!cancelled) setGoalsLoading(false); });
+    return () => { cancelled = true; };
+  }, [uid, goalLoadAttempt, setGoals]);
 
   const handleSignOut = async () => {
     try {
@@ -104,8 +109,10 @@ function App() {
           <AdvertisingManager>
             <div className="min-h-screen bg-gray-100">
               <Header user={user} onSignOut={handleSignOut} />
+              {goalsLoading && <p role="status" className="p-3 text-center">Loading your goals...</p>}
+              {goalLoadError && <div role="alert" className="p-3 text-center text-red-700">Your goals could not be loaded. <button className="underline" onClick={() => setGoalLoadAttempt(value => value + 1)}>Retry loading goals</button></div>}
               
-              <Routes>
+              {!goalsLoading && !goalLoadError && <Routes>
                 <Route path="/goals" element={<Goals />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/completed" element={<CompletedGoals />} />
@@ -119,7 +126,7 @@ function App() {
                   <Route path="/admin" element={<AdminDashboard />} />
                 )}
                 <Route path="/" element={<Navigate to="/goals" replace />} />
-              </Routes>
+              </Routes>}
             </div>
           </AdvertisingManager>
         )}

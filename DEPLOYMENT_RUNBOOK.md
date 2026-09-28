@@ -7,7 +7,7 @@ For Goal Calendly. Written during Step 10 (staging rehearsal), updated September
 | Environment | Firebase project ID | Status |
 | --- | --- | --- |
 | Local/emulator | `demo-goalcalendly` (demo project ID, no real cloud resources) | Used for all automated tests |
-| Staging | `goal-calendly-staging` | Stood up 2026-09-27 this session. Blaze plan. Functions + Firestore + Auth deployed and verified live. No frontend hosting deployed yet. |
+| Staging | `goal-calendly-staging` | Stood up 2026-09-27 this session. Blaze plan. Functions + Firestore + Auth deployed and verified live. Frontend deployed at `https://goal-calendly-staging.web.app`. |
 | Production | `goal-calendly` | Live. Functions + Firestore deployed. Frontend live at `https://goal-calendly.web.app`. Real users exist (2 as of this session). Checkout disabled (`CHECKOUT_ENABLED=false`). |
 
 Both staging and production currently point at the **same Stripe test-mode account** (Products/Prices from step 5's provisioning). This was a deliberate choice this session — Stripe test mode has no real customer data to isolate between environments, so a second Stripe test account was judged unnecessary. If live Stripe resources are ever provisioned for production (step 11), staging must **never** be pointed at them.
@@ -151,10 +151,7 @@ firebase deploy --only hosting:staging --project goal-calendly-staging
 `.env.staging` holds staging's Firebase web app config (API key, project ID, etc.) — obtained by first registering a web app on the staging project (`firebase apps:create web goal-calendly-staging-web --project goal-calendly-staging`; none existed before this session) and reading its config (`firebase apps:sdkconfig WEB <app-id> --project goal-calendly-staging`).
 
 Live at `https://goal-calendly-staging.web.app`. Talks to the staging backend end-to-end (staging Firestore/Auth/Functions) — this is the first time the full stack (frontend + backend) has existed together on staging.
-- **Live HTTP-level rehearsal of the write-pause switch and the Checkout enable/disable switch could not be completed against the real deployed staging endpoints in this session.** Both are fully covered by passing automated tests against the identical deployed code, and the write-pause flag itself was verified read/write against real staging Firestore — but neither was exercised via an actual signed-in HTTP call to the live staging function. This is because minting a custom Firebase Auth token for a synthetic user requires either a real service-account key file or `iam.serviceAccounts.signBlob` permission delegated to the calling identity, and this working environment only had the Firebase CLI's own interactive OAuth login available (no `gcloud`, no service-account key file, no `GOOGLE_APPLICATION_CREDENTIALS`). **To close this gap:** either (a) sign in through the real staging frontend once one is deployed and click through Checkout/goal-creation manually while an admin flips the switches, or (b) generate a scoped service-account key for staging test automation specifically (never for production) and re-run an HTTP-level version of these checks.
-- **No staging frontend is deployed.** All verification this session was backend-only (functions + Firestore, driven via Admin SDK scripts and direct signed HTTP calls to `stripeWebhook`). A staging frontend hosting target (Firebase Hosting site, distinct from production's `goal-calendly` site) has not been created. `functions/.env.goal-calendly-staging`'s `APP_ORIGIN` is a placeholder (`https://goal-calendly-staging.web.app`) pointing at a URL that does not yet serve anything.
-- **Rollback has been reasoned through but not physically rehearsed** (e.g., redeploying an older functions version, or reverting rules) — there was no prior staging deployment to roll back *to* until this session created the first one. A genuine rollback rehearsal now has something to roll back to; it should be done as a separate, deliberate drill (deploy a trivial change, then roll back to the current known-good revision) before step 11.
-- **Old-client-refresh drill** (serving a stale cached frontend build against newly-deployed rules that deny the old direct-write path) has not been rehearsed, since no staging frontend build exists yet.
+The earlier open items are closed by the live switch rehearsal, staging frontend deployment, Hosting rollback drill, and old-client/concurrency drill documented above. Those earlier backend-only limitations no longer describe staging.
 
 ## Gap found and fixed this session: no goal-write-pause mechanism existed
 
@@ -241,3 +238,62 @@ Re-checked against the lists above — everything previously open under "Not yet
 4. Confirm readiness to run `firebase functions:secrets:set STRIPE_SECRET_KEY --project goal-calendly` when ready (this session will guide the command; the secret value itself must be entered directly at the CLI prompt by the user, not passed through chat or written to a file).
 
 Once those are in hand, the remaining step 11 checklist items (live Product/Price/Portal provisioning, live webhook registration, cutover sequence, first real purchase) can proceed.
+
+## September 27 verification and corrections
+
+This audit supersedes the earlier function count and webhook destination claims. Production initially listed 16 ACTIVE functions; setGoalWritesPaused was missing and has now been deployed successfully, giving 17. The maintenance flag itself was not changed.
+
+The production registered test destination is `https://stripewebhook-wpkahzvajq-uc.a.run.app` (`we_1UK6cJ33BJJtidgHVWxoiJD8`). The staging test destination was absent from the current Stripe account; recreated as `https://stripewebhook-secrj7wtva-uc.a.run.app` (`we_1UKTEb33BJJtidgHg1YTcdfq`) and its secret saved to staging. Both URLs were matched to their project via Cloud Functions v2 metadata. The cloudfunctions.net aliases are callable URLs, but were not the registered destinations at audit time.
+
+Use STRIPE_WEBHOOK_URL for exact destination verification; APP_ORIGIN is a separate frontend URL. From the repo root, with credentials loaded securely into the process environment, run `npx tsx functions/scripts/verifyStripeConfig.ts --env test` (or `--env live` for live resources). This direct command also avoids PowerShell/npm argument forwarding dropping the --env flag.
+
+Frontend/backend builds, 17 unit/config tests, and 44 emulator tests passed. Public smoke checks passed for both Hosting sites:
+
+```powershell
+node scripts/verify-deployment.mjs https://goal-calendly.web.app goal-calendly
+node scripts/verify-deployment.mjs https://goal-calendly-staging.web.app goal-calendly-staging
+```
+
+Production intentionally uses test Stripe resources with Checkout disabled. User confirmed no live key has been created and requires sandbox acceptance first. No live-key mismatch exists. Complete the test-first checklist in HANDOVER.md before live provisioning.
+
+Final staging repair verification: stripeWebhook redeployed successfully with the restored endpoint signing secret. A signed non-payment probe returned HTTP 200; the forged-signature probe returned HTTP 400. Probe ID: evt_audit_signature_1790558561321. Both staging and production now pass the corrected Stripe resource verifier in test mode. This does not constitute live-payment verification.
+
+## A4 staging Upgrade repair (September 27, 2026)
+
+User confirmed the test environment, Products and enabled staging webhook, then reported createCheckoutSession HTTP 400 and service-worker caching of Firestore streams. Deployed staging CHECKOUT_ENABLED was false. Verified the staging test Stripe configuration, set only staging Checkout to true and deployed createCheckoutSession. Production was checked separately and remains false.
+
+Fixed public/sw.js: v3 caches discard old app v2 caches, external/API requests bypass service-worker caching, only static app assets are cache-first, billing-return pages are not saved, and navigations can fall back to the app shell on network/server failure. Improved billing's generic transport/server error text so it no longer incorrectly diagnoses every internal error as offline. Deployed the frontend only to hosting:staging in goal-calendly-staging.
+
+Evidence: service-worker regression script passed; staging build and public deployment smoke checks passed; fresh non-admin signup and browser Upgrade returned HTTP 200 and reached a cs_test_ Stripe Sandbox checkout displaying Pro $4.99/month. Browser cache inspection found v3 app-origin caches only and no v2 caches. Offline /subscription reload returned the app shell. No card was submitted and no entitlement-upgrade claim is made. Unpaid test sessions/accounts were created by the browser checks. User can now retry A4 after reopening/reloading staging; full payment and Portal/lifecycle acceptance remain pending.
+
+## Sharing repair and payment update (September 27, 2026)
+
+User reports that the hosted sandbox payment now worked. This is recorded as user-confirmed payment completion; independent verification of that account's paid entitlement, ads, limits, and remaining Portal/lifecycle scenarios is still pending.
+
+Fixed sharing failures caused by optional undefined fields in loaded goals: shared goals now use the existing JSON export representation before Firestore writes, preserving timestamps on the enclosing share document. ShareDialog catches failed writes, offers Retry/Close, and uses one share ID and a stable snapshot. Share is disabled when no goals have loaded, preventing empty snapshots during startup.
+
+The browser regression also found that loadFromFirestore filtered on legacy type='goal', which current backend writes omit. Removed that filter while retaining the owner UID filter; maintained updatedAt ordering locally. Existing data is not modified or deleted.
+
+Validation: serialization regression passed (nested optional fields, false/zero values, history, and immutable input); staging build passed; deployed hosting:staging. A fresh ordinary account created a goal, reloaded, generated a share link/QR, and downloaded the correct goal through Firestore at 1280px and 390px viewport widths with no uncaught browser errors. Phone-width browser verification is not a physical-phone test. Latest staging bundle: index-VnvZ9aDf.js. These frontend fixes are deployed to staging only.
+
+## Automatic saving and restored Save button (September 27, 2026)
+
+User confirmed automatic saving is required and asked about the missing ordinary-user Save button. Restored Save in the Goals toolbar for all accounts as an explicit backup through the protected update callable. Autosave remains enabled. Manual snapshots omit undefined fields and do not write identity or completion/reopening fields, preserving separate quota commands. Updates to the same goal are queued in order; manual snapshots are enqueued immediately so later edits follow them. Timer start/stop save failures now appear in the visible error banner instead of being silently ignored. Timer progress saves on Stop, not on every tick; Save does not stop or checkpoint a running timer.
+
+Validated the ordered-save/manual-save regression script, staging build, and ordinary-account browser flow: note autosave persisted through reload without Save; clicking Save after another edit displayed Goals saved and the new note survived reload. Save is visible at phone width. Deployed only hosting:staging; production remains unchanged. Latest staging bundle index-B-uwoVv4.js.
+
+## Same-period upgrade and goal loading repair (September 27, 2026)
+
+Confirmed the reported user's Stripe test subscription is active on Platinum ($9.99/month), while the app billing projection was Pro. The sync function incorrectly skipped changes when subscription ID, status, and billing-period end were unchanged. Removed that shortcut and added an older-event timestamp guard. Same-second event ordering remains dependent on reconciliation; timestamps are not unique Stripe object versions.
+
+Resynced the account from its actual Stripe test subscription: entitlement now Platinum, 30 active goals, no ads. Both existing goal documents (work and Ai development) were compared before/after and are unchanged. No goals were deleted or recreated. The original missing-screen report was not conclusively reproduced; a browser regression did expose an initial-load/creation race, now prevented by waiting for hydration before rendering editing routes. Loading failures now display Retry instead of silently returning an empty array.
+
+Paid users now see Change in billing, which opens the Portal directly. Portal return displays Back from billing and the verified plan rather than an unverified success claim. Deployed staging hosting plus stripeWebhook, reconcileOneCustomer, and reconcileSubscriptionsScheduled; production and live payments unchanged.
+
+Validation: functions build and staging frontend build passed; full emulator suite 45/45, including same-period upgrade and cancellation changes. Browser test with a synthetic paid fixture passed: Platinum display, no Upgrade button, Portal request instead of Checkout, and goal persistence across reload, billing return, and logout/login. The synthetic fixture is not evidence of another real Stripe payment. Remaining lifecycle acceptance and live launch are still pending.
+
+## Latest sandbox closure and live prerequisites
+
+See [STAGING_ACCEPTANCE.md](./STAGING_ACCEPTANCE.md) for the final test record: 49/49 emulator tests; actual Stripe test renewal/cancellation/recovery webhooks; simulated grace expiry; Portal payment-method and annual interval changes; paid-ad suppression; Pro/Platinum quotas; duplicate Checkout rejection. Fixed unpaid-period projection and grace-restart defects and deployed them to staging. Prior broad pending lists are superseded for those individual checks.
+
+Public Contact us destination is now ezboss.business@gmail.com. Owner confirmed live Stripe business/bank setup has NOT been completed. Steps 11-12 remain open for that private setup, live credentials/resources, production backup/cutover, authorized real purchase, and initial monitoring. Read the acceptance record's release-review limits before claiming the entire original specification is accepted.

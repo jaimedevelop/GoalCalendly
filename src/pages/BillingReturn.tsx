@@ -53,8 +53,8 @@ export function BillingReturn() {
     return (
       <div className="max-w-lg mx-auto py-16 px-4 text-center">
         <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-4" />
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Billing updated</h1>
-        <p className="text-gray-600 mb-6">Any changes you made in the billing portal will appear here shortly.</p>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Back from billing</h1>
+        <p className="text-gray-600 mb-6">{isLoading ? 'Checking your plan...' : `Your current app plan is ${entitlement?.plan ?? 'being confirmed'}.`} Changes appear after Stripe confirms them.</p>
         <button
           onClick={() => navigate('/subscription')}
           className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"

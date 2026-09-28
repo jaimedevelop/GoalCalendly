@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Download, Upload, Share2, Settings, CheckSquare, Layout, Crown } from 'lucide-react';
+import { Plus, Download, Upload, Share2, Settings, CheckSquare, Layout, Crown, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { GoalCard } from '../components/GoalCard';
@@ -18,6 +18,9 @@ export function Goals() {
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [importedGoals, setImportedGoals] = useState<Goal[] | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const { saveGoals, lastGoalError } = useStore();
   const [viewType, setViewType] = useState<ViewType>('top');
   const { goals, setGoals, defaultSettings, user, activeTimer } = useStore();
   const activeGoals = goals
@@ -33,6 +36,17 @@ export function Goals() {
   const activeGoalRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const firstGoalId = activeGoals[0]?.id;
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveMessage(null);
+    try {
+      if (await saveGoals()) setSaveMessage('Goals saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  useEffect(() => { setSaveMessage(null); }, [goals]);
 
   useEffect(() => {
     if (activeTimer.isRunning && activeTimer.goalId) {
@@ -210,6 +224,15 @@ export function Goals() {
 
         {/* Bottom row: All other action buttons */}
         <div className="flex flex-wrap justify-center items-center gap-2">
+          <button
+            onClick={handleSave}
+            disabled={saving || goals.length === 0}
+            className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50"
+            title="Save Goals"
+          >
+            <Save className="w-5 h-5" />
+            <span>{saving ? 'Saving...' : 'Save'}</span>
+          </button>
           <input
             type="file"
             ref={importFileRef}
@@ -235,6 +258,7 @@ export function Goals() {
           </button>
           <button
             onClick={() => setShowShareDialog(true)}
+            disabled={goals.length === 0}
             className="flex items-center justify-center space-x-2 px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600"
             title="Share Goals"
           >
@@ -278,6 +302,11 @@ export function Goals() {
         </div>
       </div>
 
+      <p className="mb-4 text-center text-sm text-gray-500">
+        Changes save automatically. Timer progress saves when you stop. Use Save to save again.
+      </p>
+      {saveMessage && <p role="status" className="mb-4 text-center text-sm text-green-700">{saveMessage}</p>}
+      {lastGoalError && <p role="alert" className="mb-4 text-center text-sm text-red-700">{lastGoalError}</p>}
       {importError && (
         <div className="max-w-4xl mx-auto mb-6">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">

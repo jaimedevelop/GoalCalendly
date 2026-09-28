@@ -1,6 +1,6 @@
 // Goal Calendly Service Worker
-const STATIC_CACHE_NAME = 'goal-calendly-static-v2';
-const DYNAMIC_CACHE_NAME = 'goal-calendly-dynamic-v2';
+const STATIC_CACHE_NAME = 'goal-calendly-static-v3';
+const DYNAMIC_CACHE_NAME = 'goal-calendly-dynamic-v3';
 
 // Files to cache immediately for offline functionality
 const STATIC_FILES = [
@@ -38,7 +38,7 @@ self.addEventListener('activate', (event) => {
       .then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (cacheName !== STATIC_CACHE_NAME && cacheName !== DYNAMIC_CACHE_NAME) {
+            if (cacheName.startsWith('goal-calendly-') && cacheName !== STATIC_CACHE_NAME && cacheName !== DYNAMIC_CACHE_NAME) {
               console.log('Service Worker: Deleting old cache:', cacheName);
               return caches.delete(cacheName);
             }
@@ -62,6 +62,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Firestore streams, Auth, Functions and Stripe own their network/cache
+  // behavior. Never intercept API traffic or cross-origin responses.
+  if (url.origin !== location.origin || /^\/(api|__\/auth)(\/|$)/.test(url.pathname)) {
+    return;
+  }
+
   // Development modules must always come from Vite, including after a reload.
   if (url.origin === location.origin && (
     url.pathname.startsWith('/src/') ||
@@ -77,9 +83,12 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       try {
         const response = await fetch(request);
-        if (response.ok) {
+        if (response.ok && !url.pathname.startsWith('/billing/')) {
           const cache = await caches.open(DYNAMIC_CACHE_NAME);
           await cache.put(request, response.clone());
+        }
+        if (response.status >= 500) {
+          return await caches.match('/index.html') || response;
         }
         return response;
       } catch {
@@ -90,8 +99,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Skip external requests (except for essential CDNs)
-  if (url.origin !== location.origin && !url.hostname.includes('googleapis.com')) {
+  // Cache only app assets. Same-origin API calls and background requests for
+  // routes (including billing return URLs) must not receive cached data.
+  if (!['script', 'style', 'image', 'font', 'manifest'].includes(request.destination) ||
+      url.pathname.startsWith('/billing/')) {
     return;
   }
 

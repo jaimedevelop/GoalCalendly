@@ -32,6 +32,40 @@ async function run() {
     respondWith: () => { intercepted = true; },
   });
   assert.equal(intercepted, false);
-  console.log('PASS: fresh navigation, offline fallback, development cache bypass');
+  for (const url of [
+    'https://firestore.googleapis.com/google.firestore.v1.Firestore/Listen/channel',
+    'https://securetoken.googleapis.com/v1/token',
+    'https://us-central1-goal-calendly-staging.cloudfunctions.net/createCheckoutSession',
+    'https://checkout.stripe.com/c/pay/test',
+    'https://example.test/api/billing',
+    'https://example.test/__/auth/handler',
+    'https://example.test/subscription',
+    'https://example.test/billing/return?status=success',
+  ]) {
+    handlers.fetch({ request: { method: 'GET', url, mode: 'cors', destination: '' },
+      respondWith: () => { throw new Error(`Must not intercept ${url}`); } });
+  }
+  let writes = 0;
+  context.fetch = async () => new Response('current billing shell');
+  context.caches.open = async () => ({ put: async () => { writes++; } });
+  handlers.fetch({ request: { method: 'GET', url: 'https://example.test/billing/return?status=success', mode: 'navigate' },
+    respondWith: promise => { response = promise; } });
+  assert.equal(await (await response).text(), 'current billing shell');
+  assert.equal(writes, 0, 'billing return pages must not be cached');
+  context.fetch = async () => new Response('unavailable', { status: 503 });
+  navigate();
+  assert.equal(await (await response).text(), 'cached', 'server failure falls back to the app shell');
+  context.fetch = async () => { throw new Error('offline'); };
+  context.caches.match = async () => undefined;
+  navigate();
+  assert.equal((await response).status, 503, 'a genuinely uncached offline page reports unavailable');
+  const deleted = [];
+  context.caches.keys = async () => ['goal-calendly-static-v2', 'goal-calendly-dynamic-v2', 'goal-calendly-static-v3', 'unrelated'];
+  context.caches.delete = async name => { deleted.push(name); };
+  context.self.clients = { claim: async () => {} };
+  handlers.activate({ waitUntil: promise => { response = promise; } });
+  await response;
+  assert.deepEqual(deleted.sort(), ['goal-calendly-dynamic-v2', 'goal-calendly-static-v2']);
+  console.log('PASS: navigation/offline fallback, API isolation, billing no-cache, stale cache cleanup');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

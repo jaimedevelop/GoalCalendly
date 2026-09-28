@@ -5,7 +5,7 @@
  * section 8, step 5).
  *
  * Usage (run from functions/, after `npm run build`):
- *   STRIPE_SECRET_KEY=rk_test_... node --experimental-strip-types scripts/provisionStripe.ts --env test
+ *   STRIPE_SECRET_KEY=rk_test_... npx tsx scripts/provisionStripe.ts --env test
  *
  * Safety:
  * - Requires an explicit --env test|live flag. There is no default, so a
@@ -198,7 +198,7 @@ async function main() {
   assertKeyMatchesEnv(secretKey, env);
 
   const currency = process.env.STRIPE_CURRENCY ?? 'usd';
-  const stripe = new Stripe(secretKey, { apiVersion: '2025-02-24.acacia' });
+  const stripe = new Stripe(secretKey, { apiVersion: '2026-08-26.dahlia' });
 
   console.log(`Provisioning Stripe resources for env=${env}, currency=${currency}...`);
 

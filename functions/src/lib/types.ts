@@ -30,6 +30,7 @@ export interface BillingCustomerRecord {
   gracePeriodEndsAt?: string;
   cancelAtPeriodEnd: boolean;
   lastSyncedAt: string;
+  lastStripeEventCreated?: number;
 }
 
 /**

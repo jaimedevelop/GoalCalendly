@@ -16,7 +16,7 @@ A comprehensive goal tracking application built with React, TypeScript, and Goog
 - Complete goals tracking
 - Multiple view layouts (Top, Double, Three)
 - Starting a timer moves its goal first and scrolls it into view in every layout. Goals stay ordered by their most recent timer start after stopping; this order is saved with the goals. The running clock stays fixed at the bottom right.
-- Timer ticks and taskbar notification updates run locally without database writes. Starting a timer saves only that goal's updated ordering; stopping saves only that goal's completed session totals. Individual goal edits and additions also save only the affected goal. The explicit Save Goals action still saves all goals.
+- Timer ticks and taskbar notification updates run locally without database writes. Starting a timer saves only that goal's updated ordering; stopping saves only that goal's completed session totals. Individual goal edits and additions also save only the affected goal. The Save button is available to all users as a manual backup through the protected backend. It saves existing goals without changing completion status; normal edits save automatically. Timer progress saves when the timer stops.
 - **Installable PWA**: Install the app to your home screen/desktop with offline support via a service worker
 - **Background Timer Notifications**: Active timers keep tracking and notify you even when the app is in the background or the phone is locked, including a persistent mobile taskbar/notification-bar indicator
 - Real-time data synchronization with Firestore
@@ -28,7 +28,7 @@ A comprehensive goal tracking application built with React, TypeScript, and Goog
 ### Administrator Account
 - **Admin provisioning**: trusted admins are granted via a Firebase custom claim (see `functions/scripts/setAdminClaim.ts`), not an automatic email match. There is no special "admin" email address.
 - **User Management**: View, manage, and delete user accounts
-- **Subscription Management**: View and modify user subscription plans
+- **Subscription Management**: View billed/effective access and grant or revoke audited complimentary access; manage paid subscriptions through Stripe
 - **User Statistics**: Dashboard with user counts and subscription analytics
 - **Unlimited Goals**: Admin users can create unlimited goals without subscription restrictions
 - **No Payment Required**: Admin account is free from all subscription limitations

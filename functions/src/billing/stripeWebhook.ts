@@ -57,8 +57,8 @@ export async function handleStripeEvent(stripe: Stripe, event: Stripe.Event): Pr
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         if (session.mode === 'subscription' && session.subscription) {
-          const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
-          await syncSubscriptionState(subscription);
+          const subscription = await stripe.subscriptions.retrieve(session.subscription as string, { expand: ['latest_invoice'] });
+          await syncSubscriptionState(subscription, event.created);
         }
         break;
       }
@@ -67,7 +67,10 @@ export async function handleStripeEvent(stripe: Stripe, event: Stripe.Event): Pr
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
-        await syncSubscriptionState(subscription);
+        if (typeof subscription.latest_invoice === 'string') {
+          subscription.latest_invoice = await stripe.invoices.retrieve(subscription.latest_invoice);
+        }
+        await syncSubscriptionState(subscription, event.created);
         break;
       }
 
@@ -80,8 +83,8 @@ export async function handleStripeEvent(stripe: Stripe, event: Stripe.Event): Pr
         // `parent.subscription_details.subscription`.
         const subscriptionId = invoice.parent?.subscription_details?.subscription;
         if (subscriptionId) {
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId as string);
-          await syncSubscriptionState(subscription);
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId as string, { expand: ['latest_invoice'] });
+          await syncSubscriptionState(subscription, event.created);
         }
         break;
       }

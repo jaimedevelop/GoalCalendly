@@ -14,7 +14,7 @@ Date: 2026-09-26. Produced per `admin_subscriptions.md` section 10, Step 1.
 | Downgrade / over-limit policy | Non-destructive: keep existing goals usable, block new/reactivated goals until under the new limit, never auto-delete | Using document default |
 | Grace period | 7-day grace period after first `past_due` following a prior successful payment; no grace on an initial failed payment | Using document default |
 | Legacy manually-assigned paid plans | Migrate to explicitly marked complimentary access with documented expiry or reviewed permanent grant; never auto-charged | Using document default |
-| Enterprise contact destination | **Not yet selected** — need a real contact email/form destination to wire into the Contact button | Open item |
+| Enterprise contact destination | Owner selected ezboss.business@gmail.com; wired into Contact actions | Closed; staging deployed, production release pending |
 | Admin provisioning | Firebase custom claims, provisioned by UID; hard-coded `admin@admin.com` email check removed | Section 2 / section 3 |
 
 ## Baseline inspection
@@ -56,10 +56,12 @@ Date: 2026-09-26. Produced per `admin_subscriptions.md` section 10, Step 1.
 - No `.env.example` present in repo root at this time (to be created per section 4).
 - Existing deployment host, live Firebase project contents, and whether real users currently exist were **not inspected** — this requires the user, per `credentials.md` step 2 ("write down the Project ID... tell the developer whether this project already contains real users"). **Open dependency, blocking nothing locally.**
 
-## Open items blocking later (non-local) steps
+## Original open items (historical baseline)
+
+September 27 update: pricing is implemented at $4.99/$9.99 monthly; staging and sandbox provisioning are complete. Enterprise contact remains a placeholder. The items below describe the baseline, not current blockers; see HANDOVER.md.
 
 1. Launch pricing selection (blocks step 5 resource creation, not local step 2-4 work).
-2. Enterprise contact destination (blocks step 8 UI wiring only).
+2. Enterprise contact destination resolved: ezboss.business@gmail.com.
 3. Staging Firebase project ID/config, per `credentials.md` step 2 (blocks step 2's "environment templates" only insofar as real values are needed for deployment; local `functions/` scaffolding does not require it).
 4. Stripe sandbox credentials, Price IDs, webhook secret — expected later per `credentials.md` steps 4-6, tied to roadmap steps 5-7.
 

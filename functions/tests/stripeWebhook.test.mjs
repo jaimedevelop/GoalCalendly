@@ -23,6 +23,12 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, signInAnonymously } from 'firebase/auth';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import fs from 'node:fs';
+import { config } from 'dotenv';
+
+// Firebase loads this project file only into its function workers. Load the
+// same fixture configuration in the test client so signatures and Price IDs
+// agree. Explicit shell overrides retain precedence; never load production.
+config({ path: new URL('../.env.demo-goalcalendly', import.meta.url), quiet: true });
 
 const PROJECT_ID = 'demo-goalcalendly';
 const WEBHOOK_URL = `http://127.0.0.1:5001/${PROJECT_ID}/us-central1/stripeWebhook`;
@@ -45,6 +51,7 @@ function fakeSubscription({ current_period_end, ...overrides } = {}) {
     object: 'subscription',
     customer: 'cus_test_1',
     status: 'active',
+    latest_invoice: { status: 'paid' },
     cancel_at_period_end: false,
     items: { data: [{ price: { id: PRICE_PRO_MONTHLY }, current_period_end: current_period_end ?? now + 30 * 24 * 60 * 60 }] },
     metadata: { firebaseUid: uid },
@@ -132,6 +139,32 @@ test('a forged signature is rejected and never changes entitlement', async () =>
   assert.equal(entitlement, null, 'a forged event must not create or change an entitlement record');
 });
 
+test('same-period plan and cancellation changes update entitlement and billing summary', async () => {
+  const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
+  let result = await postEvent('customer.subscription.created', fakeSubscription({ current_period_end: periodEnd }));
+  assert.equal(result.status, 200, result.body);
+  assert.equal((await getEntitlement(uid)).plan, 'pro');
+  const platinum = fakeSubscription({
+    items: { data: [{ price: { id: process.env.STRIPE_PRICE_PLATINUM_MONTHLY }, current_period_end: periodEnd }] },
+    cancel_at_period_end: true,
+  });
+  result = await postEvent('customer.subscription.updated', platinum);
+  assert.equal(result.status, 200, result.body);
+  const entitlement = await getEntitlement(uid);
+  assert.equal(entitlement.plan, 'platinum');
+  assert.equal(entitlement.maxActiveGoals, 30);
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const summary = (await ctx.firestore().collection('billingSummaries').doc(uid).get()).data();
+    assert.equal(summary.plan, 'platinum');
+    assert.equal(summary.cancelAtPeriodEnd, true);
+  });
+  result = await postEvent('customer.subscription.updated', { ...platinum, cancel_at_period_end: false });
+  assert.equal(result.status, 200);
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    assert.equal((await ctx.firestore().collection('billingSummaries').doc(uid).get()).data().cancelAtPeriodEnd, false);
+  });
+});
+
 test('replaying an already-processed event does not double-apply or error', async () => {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await ctx.firestore().collection('billingCustomers').doc(uid).set({ uid, stripeCustomerId: 'cus_test_1', status: 'none', cancelAtPeriodEnd: false, lastSyncedAt: new Date().toISOString() });
@@ -185,4 +218,32 @@ test('an invoice event with no linked subscription (parent.subscription_details 
   assert.equal(result.status, 200, result.body);
   const entitlement = await getEntitlement(uid);
   assert.equal(entitlement, null);
+});
+
+test('failed initial payment never grants a paid window', async () => {
+  const result = await postEvent('customer.subscription.created', fakeSubscription({status:'incomplete'}));
+  assert.equal(result.status,200);assert.equal((await getEntitlement(uid)).plan,'free');
+});
+
+test('failed renewal preserves paid-through and expired grace; recovery restores access', async () => {
+  const past=Math.floor(Date.now()/1000)-86400;
+  assert.equal((await postEvent('customer.subscription.created',fakeSubscription({current_period_end:past}))).status,200);
+  assert.equal((await postEvent('customer.subscription.updated',fakeSubscription({status:'past_due'}))).status,200);
+  await testEnv.withSecurityRulesDisabled(async ctx=>{
+    const ref=ctx.firestore().collection('billingCustomers').doc(uid);const b=(await ref.get()).data();
+    assert.equal(b.paidThroughDate,new Date(past*1000).toISOString());assert.ok(b.gracePeriodEndsAt);
+    await ref.update({gracePeriodEndsAt:new Date(Date.now()-1000).toISOString()});
+  });
+  assert.equal((await postEvent('customer.subscription.updated',fakeSubscription({status:'past_due'}))).status,200);
+  assert.equal((await getEntitlement(uid)).plan,'free');
+  assert.equal((await postEvent('customer.subscription.updated',fakeSubscription())).status,200);
+  assert.equal((await getEntitlement(uid)).plan,'pro');
+  await testEnv.withSecurityRulesDisabled(async ctx=>assert.equal((await ctx.firestore().collection('billingCustomers').doc(uid).get()).data().gracePeriodEndsAt,undefined));
+});
+
+test('active subscription with draft renewal invoice does not extend paid-through',async()=>{
+  const past=Math.floor(Date.now()/1000)-86400;
+  await postEvent('customer.subscription.created',fakeSubscription({current_period_end:past}));
+  await postEvent('customer.subscription.updated',fakeSubscription({latest_invoice:{status:'draft'}}));
+  await testEnv.withSecurityRulesDisabled(async ctx=>assert.equal((await ctx.firestore().collection('billingCustomers').doc(uid).get()).data().paidThroughDate,new Date(past*1000).toISOString()));
 });

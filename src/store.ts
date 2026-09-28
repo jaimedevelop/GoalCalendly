@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { Goal, Timer, GoalSettings, DEFAULT_GOAL_SETTINGS, LEVELS, WeeklyTrophy, Entitlement } from './types';
 import { format, getWeek } from 'date-fns';
 import { AuthUser } from './services/auth.js';
-import { createGoal, updateGoalFields, completeGoal, deleteGoalRemote } from './services/goals.js';
+import { createGoal, updateGoalFields, completeGoal, deleteGoalRemote, saveGoalSnapshots } from './services/goals.js';
 
 interface Store {
   goals: Goal[];
@@ -24,6 +24,7 @@ interface Store {
   setEntitlement: (entitlement: Entitlement | null, isLoading: boolean) => void;
   /** Set to a human-readable message when the server rejects the most recent goal mutation. Cleared on the next successful one. */
   lastGoalError: string | null;
+  saveGoals: () => Promise<boolean>;
   addGoal: (goal: Goal) => Promise<boolean>;
   updateGoal: (goalId: string, updates: Partial<Goal>) => Promise<boolean>;
   completeGoalById: (goalId: string) => Promise<boolean>;
@@ -113,6 +114,12 @@ export const useStore = create<Store>((set, get) => ({
   isEntitlementLoading: true,
   setEntitlement: (entitlement, isLoading) => set({ entitlement, isEntitlementLoading: isLoading }),
   lastGoalError: null,
+  saveGoals: async () => {
+    set({ lastGoalError: null });
+    const result = await saveGoalSnapshots(get().goals);
+    if (!result.ok) set({ lastGoalError: result.error?.message ?? 'Could not save all goals. Please try again.' });
+    return result.ok;
+  },
   addGoal: async (goal) => {
     const newGoal = { ...goal, weeklyTrophies: [] };
     // Optimistic local add for responsive UI; rolled back if the server rejects it
@@ -203,7 +210,9 @@ export const useStore = create<Store>((set, get) => ({
       // lastTimerStartedAt is a low-stakes UX field (resumes an in-progress
       // timer after a refresh); persisted best-effort via updateGoal rather
       // than blocking timer start on a round trip.
-      updateGoalFields(goalId, { lastTimerStartedAt: startTime });
+      void updateGoalFields(goalId, { lastTimerStartedAt: startTime }).then(result => {
+        if (!result.ok) set({ lastGoalError: result.error?.message ?? 'Could not save the timer start. Use Save to retry.' });
+      });
       return {
         goals,
         activeTimer: {
@@ -265,7 +274,9 @@ export const useStore = create<Store>((set, get) => ({
 
     // Timer progress never increases the active-goal count, so this is safe
     // to persist best-effort without the optimistic-rollback dance addGoal uses.
-    updateGoalFields(goal.id, timerUpdates);
+    void updateGoalFields(goal.id, timerUpdates).then(result => {
+      if (!result.ok) set({ lastGoalError: result.error?.message ?? 'Could not save timer progress. Use Save to retry before leaving this page.' });
+    });
   },
   resetTimer: () =>
     set({

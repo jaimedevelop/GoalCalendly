@@ -79,8 +79,32 @@ export const duplicateGoal = (goal: Goal) => callMutateGoals({ type: 'duplicate'
 
 export const reopenGoal = (goalId: string) => callMutateGoals({ type: 'reopen', goalId });
 
-export const updateGoalFields = (goalId: string, updates: Partial<Goal>) =>
-  callMutateGoals({ type: 'update', goalId, updates });
+// Keep typing autosaves and an explicit Save in order for the same goal.
+// Otherwise a slower earlier request can overwrite a newer edit.
+const updateQueues = new Map<string, Promise<GoalMutationResult>>();
+export function updateGoalFields(goalId: string, updates: Partial<Goal>): Promise<GoalMutationResult> {
+  const previous = updateQueues.get(goalId) ?? Promise.resolve({ ok: true });
+  const next = previous.then(() => callMutateGoals({ type: 'update', goalId, updates }));
+  updateQueues.set(goalId, next);
+  void next.then(() => { if (updateQueues.get(goalId) === next) updateQueues.delete(goalId); });
+  return next;
+}
+
+/** Explicit backup save of existing goals through the protected update API.
+ * Completion/reopening and creation retain their own quota-checked commands.
+ */
+export async function saveGoalSnapshots(goals: Goal[]): Promise<GoalMutationResult> {
+  const snapshots: Goal[] = JSON.parse(JSON.stringify(goals));
+  const results = await Promise.all(snapshots.map(goal => {
+    const updates: Partial<Goal> = { ...goal };
+    delete updates.id;
+    delete updates.completed;
+    delete updates.completedDate;
+    // Enqueue every snapshot now, before any edits made after clicking Save.
+    return updateGoalFields(goal.id, updates);
+  }));
+  return results.find(result => !result.ok) ?? { ok: true };
+}
 
 export const completeGoal = (goalId: string) => callMutateGoals({ type: 'complete', goalId });
 
