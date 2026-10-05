@@ -26,7 +26,14 @@ function TimerRow({ goalName, startTime, onStop }: { goalName: string; startTime
       </div>
       <div className="flex items-center space-x-2">
         <span className="text-sm text-gray-600">{goalName}</span>
-        <button onClick={onStop} aria-label={`Stop timer for ${goalName}`} className="p-2 text-red-500 hover:bg-red-50 rounded-full">
+        <button onClick={() => {
+          const wasFocused = document.activeElement?.getAttribute('aria-label') === `Stop timer for ${goalName}`;
+          onStop();
+          if (wasFocused) requestAnimationFrame(() => {
+            const next = document.querySelector<HTMLButtonElement>('button[aria-label^="Stop timer for "]');
+            (next ?? document.getElementById('app-content'))?.focus({ preventScroll: true });
+          });
+        }} aria-label={`Stop timer for ${goalName}`} className="p-2 text-red-500 hover:bg-red-50 rounded-full">
           <StopCircle className="w-5 h-5" />
         </button>
       </div>
@@ -98,7 +105,7 @@ export function ActiveTimer() {
   return (
     <>
       {showNotificationPrompt && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white rounded-lg shadow-lg p-4 z-50">
+        <div data-popup-blocker className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white rounded-lg shadow-lg p-4 z-50 max-w-[calc(100%-2rem)]">
           <div className="flex items-center space-x-4">
             <Bell className="w-5 h-5" />
             <span className="text-sm">Keep timer visible in status bar?</span>
@@ -120,7 +127,7 @@ export function ActiveTimer() {
 
       <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 space-y-2 max-h-48 overflow-y-auto">
         {rows.map(({ goal, startTime }) => (
-          <TimerRow key={goal.id} goalName={goal.name} startTime={startTime} onStop={() => stopTimer(goal.id)} />
+          <TimerRow key={goal.id} goalName={goal.name} startTime={startTime} onStop={() => { void stopTimer(goal.id); }} />
         ))}
       </div>
     </>

@@ -42,6 +42,7 @@ import {
   type UserAccessSummary,
 } from '../services/admin.js';
 import type { SubscriptionPlanId } from '../../shared/subscriptionPlans.js';
+import { AnimationPreviews } from './celebrations/AnimationPreviews';
 
 // Sample campaigns data for initialization
 const sampleCampaigns = [
@@ -160,7 +161,7 @@ const AdminDashboard: React.FC = () => {
   const [grantExpiryDays, setGrantExpiryDays] = useState<number | ''>(30);
   const [grantReason, setGrantReason] = useState('');
   const [actionPendingUid, setActionPendingUid] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'advertising' | 'advertisingWays'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'advertising' | 'advertisingWays' | 'settings'>('users');
   const [showCampaignForm, setShowCampaignForm] = useState(false);
   const [showAdvertisingWayForm, setShowAdvertisingWayForm] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
@@ -615,7 +616,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* Tab Navigation */}
         <div className="border-b border-gray-200 mb-6">
-          <nav className="-mb-px flex space-x-8">
+          <nav className="-mb-px flex flex-wrap gap-x-8 gap-y-2" aria-label="Admin menu">
             <button
               onClick={() => setActiveTab('users')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
@@ -655,6 +656,11 @@ const AdminDashboard: React.FC = () => {
                 Advertising Ways
               </div>
             </button>
+            <button onClick={() => setActiveTab('settings')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'settings'
+                ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+              <span className="flex items-center gap-2"><Settings className="w-4 h-4" aria-hidden="true" /> Settings</span>
+            </button>
           </nav>
         </div>
 
@@ -663,6 +669,8 @@ const AdminDashboard: React.FC = () => {
             {error}
           </div>
         )}
+
+        {activeTab === 'settings' && <AnimationPreviews />}
 
         {/* User Management Tab */}
         {activeTab === 'users' && (

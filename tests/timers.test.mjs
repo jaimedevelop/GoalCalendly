@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve, dirname } from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -20,12 +20,13 @@ function setup(overrides = {}, storage = new Map()) {
     updateGoalFields: async (id, updates) => { writes.push({ id, updates }); return { ok: true }; },
     completeGoal: async () => ({ ok: true }),
     deleteGoalRemote: async () => ({ ok: true }),
+    saveGoalSnapshots: async () => ({ ok: true }),
     ...overrides,
   };
   const cache = new Map();
   function load(file) {
     let path = resolve(file);
-    if (!existsSync(path)) path = path.replace(/\.js$/, '') + '.ts';
+    if (!existsSync(path) || !statSync(path).isFile()) path = path.replace(/\.js$/, '') + '.ts';
     if (cache.has(path)) return cache.get(path);
     const exports = {};
     cache.set(path, exports);
@@ -54,6 +55,7 @@ function setup(overrides = {}, storage = new Map()) {
   useStore.setState({ goals: ['a', 'b', 'c', 'd'].map(goal) });
   return {
     store: useStore, writes, storage, advance: ms => { now += ms; },
+    setTime: value => { now = value; },
     running: () => Array.from(useStore.getState().activeTimers, t => t.goalId),
     ordered: () => Array.from(sortActiveGoals(useStore.getState().goals, useStore.getState().activeTimers), g => g.id),
   };
@@ -150,4 +152,160 @@ test('default target accepts fractions and rejects empty, negative and non-finit
   s.updateDefaultSettings({ target: { type: 'hours', value: 0.5 } });
   for (const value of [0, -1, NaN, Infinity]) s.updateDefaultSettings({ target: { type: 'hours', value } });
   assert.equal(h.store.getState().defaultSettings.target.value, 0.5);
+});
+
+function target(h, frequency = 'weekly', value = 1) {
+  h.store.setState(state => ({ goals: state.goals.map(g => ({ ...g,
+    settings: { ...g.settings, frequency, target: { type: 'hours', value } },
+  })) }));
+}
+
+test('timer feedback stays pending until saved, then promotes to one trophy', async () => {
+  let finish;
+  const h = setup({ updateGoalFields: async (_id, updates) => updates.totalTimeSpent === undefined
+    ? { ok: true } : new Promise(resolve => { finish = resolve; }) });
+  target(h);
+  const s = h.store.getState();
+  s.startTimer('a'); h.advance(3600000);
+  const stopped = s.stopTimer('a');
+  assert.equal(h.store.getState().celebrations[0].saveState, 'saving');
+  assert.equal(h.store.getState().celebrations[0].kind, 'timer');
+  assert.equal(await s.stopTimer('a'), false);
+  finish({ ok: true });
+  assert.equal(await stopped, true);
+  assert.equal(h.store.getState().celebrations.length, 1);
+  assert.equal(h.store.getState().celebrations[0].kind, 'trophy');
+  assert.equal(h.store.getState().celebrations[0].durationMs, 3600000);
+  s.dismissCelebration(h.store.getState().celebrations[0].id);
+  s.startTimer('a'); h.advance(3600000);
+  const again = s.stopTimer('a'); finish({ ok: true }); await again;
+  assert.equal(h.store.getState().celebrations[0].kind, 'timer');
+});
+
+test('dismissed pending timer does not reopen on success but a new trophy can', async () => {
+  for (const earnsTrophy of [false, true]) {
+    let finish;
+    const h = setup({ updateGoalFields: async (_id, updates) => updates.totalTimeSpent === undefined
+      ? { ok: true } : new Promise(resolve => { finish = resolve; }) });
+    target(h, 'weekly', earnsTrophy ? 1 : 5);
+    const s = h.store.getState();
+    s.startTimer('a'); h.advance(3600000);
+    const stopped = s.stopTimer('a');
+    s.dismissCelebration(h.store.getState().celebrations[0].id);
+    finish({ ok: true }); await stopped;
+    assert.equal(h.store.getState().celebrations.length, earnsTrophy ? 1 : 0);
+    if (earnsTrophy) assert.equal(h.store.getState().celebrations[0].dismissed, false);
+  }
+});
+
+test('failed timer never celebrates; only a confirmed progress Save recovers its award once', async () => {
+  let saveOk = false;
+  const h = setup({
+    updateGoalFields: async (_id, updates) => ({ ok: updates.totalTimeSpent === undefined }),
+    saveGoalSnapshots: async () => ({ ok: saveOk }),
+  });
+  target(h);
+  const s = h.store.getState();
+  s.startTimer('a'); h.advance(3600000); await s.stopTimer('a');
+  assert.equal(h.store.getState().celebrations[0].kind, 'error');
+  assert.equal(h.store.getState().goals[0].totalTimeSpent, 1);
+  assert.equal(h.store.getState().failedSessions.length, 1);
+  s.dismissCelebration(h.store.getState().celebrations[0].id);
+  assert.equal(await s.updateGoal('a', { note: 'unrelated edit' }), true);
+  assert.equal(h.store.getState().celebrations.length, 0);
+  assert.equal(await s.saveGoals(), false);
+  assert.equal(h.store.getState().celebrations.length, 0);
+  saveOk = true;
+  assert.equal(await s.saveGoals(), true);
+  assert.equal(h.store.getState().celebrations[0].kind, 'trophy');
+  assert.equal(h.store.getState().failedSessions.length, 0);
+  s.dismissCelebration(h.store.getState().celebrations[0].id);
+  await s.saveGoals();
+  assert.equal(h.store.getState().celebrations.length, 0);
+});
+
+test('manual time celebrates successful awards only and rolls back failed saves', async () => {
+  for (const ok of [true, false]) {
+    const h = setup({ updateGoalFields: async () => ({ ok }) });
+    target(h);
+    assert.equal(await h.store.getState().addManualTime('a', new Date(2026, 9, 5), 60), ok);
+    assert.equal(h.store.getState().celebrations.length, ok ? 1 : 0);
+    assert.equal(h.store.getState().goals[0].trophies, ok ? 1 : 0);
+  }
+});
+
+test('a midnight session groups daily awards and does not replay them after loading', async () => {
+  const h = setup(); target(h, 'daily', 0.25);
+  h.setTime(new Date(2026, 9, 5, 23, 30).getTime());
+  h.store.getState().startTimer('a'); h.advance(3600000);
+  await h.store.getState().stopTimer('a');
+  assert.equal(h.store.getState().celebrations[0].periodKeys.length, 2);
+  const saved = h.store.getState().goals;
+  h.store.getState().dismissCelebration(h.store.getState().celebrations[0].id);
+  h.store.getState().setGoals(saved);
+  assert.equal(h.store.getState().celebrations.length, 0);
+});
+
+test('completion queues trophy then completion, suppressing the ordinary timer popup', async () => {
+  for (const earns of [true, false]) {
+    const h = setup(); target(h, 'weekly', earns ? 1 : 5);
+    h.store.getState().startTimer('a'); h.advance(3600000);
+    await h.store.getState().completeGoalById('a');
+    assert.deepEqual(Array.from(h.store.getState().celebrations, item => item.kind), earns ? ['trophy', 'completed'] : ['completed']);
+    assert.ok(h.store.getState().celebrations.every(item => !item.suppressed));
+  }
+});
+
+test('late save callbacks cannot publish into a different authenticated session', async () => {
+  let finish;
+  const h = setup({ updateGoalFields: async (_id, updates) => updates.totalTimeSpent === undefined
+    ? { ok: true } : new Promise(resolve => { finish = resolve; }) });
+  const s = h.store.getState();
+  s.startTimer('a'); h.advance(3600000); const stopped = s.stopTimer('a');
+  s.setUser({ uid: 'another-user' });
+  finish({ ok: false }); await stopped;
+  assert.equal(h.store.getState().celebrations.length, 0);
+  assert.equal(h.store.getState().lastGoalError, null);
+  assert.equal(h.store.getState().failedSessions.length, 0);
+});
+
+test('admin previews replay without goal mutations and require a trusted admin', () => {
+  const h = setup();
+  const s = h.store.getState();
+  s.previewCelebration('trophy');
+  assert.equal(h.store.getState().celebrations.length, 0);
+  h.store.setState({ user: { uid: 'admin', isTrustedAdmin: true } });
+  const original = JSON.stringify(h.store.getState().goals);
+  s.previewCelebration('timer'); const first = h.store.getState().celebrations[0].id;
+  s.previewCelebration('trophy');
+  assert.equal(h.store.getState().celebrations.length, 1);
+  assert.notEqual(h.store.getState().celebrations[0].id, first);
+  assert.equal(h.store.getState().celebrations[0].kind, 'trophy');
+  assert.equal(JSON.stringify(h.store.getState().goals), original);
+  assert.equal(h.writes.length, 0);
+});
+
+test('a zero-duration stop acknowledges no recorded time and cannot earn a trophy', async () => {
+  const h = setup(); target(h);
+  h.store.getState().startTimer('a'); await h.store.getState().stopTimer('a');
+  assert.equal(h.store.getState().celebrations[0].saveState, 'empty');
+  assert.equal(h.store.getState().celebrations[0].kind, 'timer');
+  assert.equal(h.store.getState().goals[0].totalTimeSpent, 0);
+});
+
+test('out-of-order saves on different goals keep each duration and award attached to its session', async () => {
+  const finish = new Map();
+  const h = setup({ updateGoalFields: async (id, updates) => updates.totalTimeSpent === undefined
+    ? { ok: true } : new Promise(resolve => { finish.set(id, resolve); }) });
+  target(h);
+  h.store.getState().startTimer('a'); h.advance(1800000);
+  h.store.getState().startTimer('b'); h.advance(1800000);
+  const a = h.store.getState().stopTimer('a');
+  const b = h.store.getState().stopTimer('b');
+  finish.get('b')({ ok: true }); await b;
+  finish.get('a')({ ok: true }); await a;
+  const events = h.store.getState().celebrations;
+  assert.deepEqual(Array.from(events, item => item.goalId), ['a', 'b']);
+  assert.deepEqual(Array.from(events, item => item.kind), ['trophy', 'timer']);
+  assert.deepEqual(Array.from(events, item => item.durationMs), [3600000, 1800000]);
 });

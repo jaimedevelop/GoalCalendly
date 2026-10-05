@@ -6,6 +6,7 @@ const ToastProvider = ToastPrimitives.Provider;
 
 export type ToastProps = React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root> & {
   variant?: 'default' | 'success' | 'error';
+  animationVariant?: 'timer' | 'trophy';
 };
 export type ToastActionElement = React.ReactElement<React.ComponentPropsWithoutRef<typeof ToastPrimitives.Action>>;
 
@@ -16,7 +17,7 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      'fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]',
+      'popup-viewport fixed left-1/2 z-[100] flex w-[calc(100%-2rem)] max-w-[420px] -translate-x-1/2 flex-col gap-2 outline-none',
       className
     )}
     {...props}
@@ -27,14 +28,16 @@ ToastViewport.displayName = ToastPrimitives.Viewport.displayName;
 const Toast = React.forwardRef<
   React.ElementRef<typeof ToastPrimitives.Root>,
   ToastProps
->(({ className, variant = 'default', ...props }, ref) => {
+>(({ className, variant = 'default', animationVariant, ...props }, ref) => {
   return (
     <ToastPrimitives.Root
       ref={ref}
+      data-animation={animationVariant ?? 'timer'}
       className={cn(
-        'group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border border-gray-200 p-6 pr-8 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full bg-white',
+        'celebration-popup group pointer-events-auto relative flex w-full items-center justify-between gap-3 overflow-hidden rounded-2xl border border-gray-200 p-5 pr-12 shadow-lg bg-white',
         variant === 'error' && 'border-red-200 text-red-700',
         variant === 'success' && 'border-green-200 text-green-700',
+        animationVariant === 'trophy' && 'border-amber-200 bg-amber-50 text-amber-900 shadow-amber-900/10',
         className
       )}
       {...props}
@@ -65,7 +68,7 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      'absolute right-2 top-2 rounded-md p-1 text-gray-500/50 opacity-0 transition-opacity hover:text-gray-900 focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100',
+      'absolute right-2 top-2 rounded-md p-2 text-gray-500 hover:text-gray-900 hover:bg-black/5 focus:outline-none focus:ring-2 focus:ring-blue-500',
       className
     )}
     toast-close=""

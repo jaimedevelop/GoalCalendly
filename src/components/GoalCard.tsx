@@ -35,15 +35,10 @@ export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
     const isCompleted = e.target.checked;
 
     if (isCompleted) {
+      const generation = useStore.getState().authGeneration;
       const ok = await completeGoalById(goal.id);
-      if (ok) {
-        toast({
-          title: "Goal Completed!",
-          description: `Congratulations on completing "${goal.name}"! You can find it in the Completed Goals section.`,
-          variant: "success",
-          duration: 5000
-        });
-      } else {
+      if (generation !== useStore.getState().authGeneration) return;
+      if (!ok) {
         toast({
           title: "Could not complete goal",
           description: useStore.getState().lastGoalError ?? 'Please try again.',

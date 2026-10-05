@@ -9,3 +9,69 @@ body {
 input {
   @apply border-gray-300 focus:border-blue-500 focus:ring-blue-500;
 }
+
+.popup-viewport {
+  top: calc(env(safe-area-inset-top, 0px) + 5rem);
+  max-height: calc(100dvh - 6rem);
+}
+
+.celebration-popup[data-state='open'] { animation: timer-popup-in 200ms ease-out both; }
+.celebration-popup { max-height: calc(100dvh - 6rem); overflow-y: auto; }
+.celebration-popup[data-state='closed'] { animation: popup-out 150ms ease-in both; }
+.celebration-popup[data-animation='trophy'][data-state='open'] { animation: trophy-popup-in 320ms cubic-bezier(.16, 1, .3, 1) both; }
+.celebration-popup[data-animation='trophy'][data-state='closed'] { animation-duration: 180ms; }
+.celebration-popup[data-entrance='false'][data-state='open'] { animation: none; }
+.celebration-timer-icon { animation: timer-icon-in 280ms ease-out both; }
+.celebration-trophy-icon { animation: trophy-settle 500ms ease-out both; }
+
+.trophy-particle {
+  position: absolute;
+  left: 25%;
+  top: 50%;
+  width: 5px;
+  height: 8px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: trophy-particle-burst 760ms ease-out both;
+}
+
+.celebration-popup[data-swipe='move'] {
+  animation: none;
+  transform: translateX(var(--radix-toast-swipe-move-x));
+}
+.celebration-popup[data-swipe='cancel'] { transform: translateX(0); transition: transform 150ms ease-out; }
+.celebration-popup[data-swipe='end'] { animation: popup-out 150ms ease-in both; }
+
+@keyframes timer-popup-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes trophy-popup-in {
+  from { opacity: 0; transform: scale(.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes popup-out { to { opacity: 0; } }
+@keyframes timer-icon-in {
+  from { opacity: .4; transform: scale(.85); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes trophy-settle {
+  0% { transform: scale(.8) rotate(-8deg); }
+  60% { transform: scale(1.08) rotate(3deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes trophy-particle-burst {
+  0% { opacity: 0; transform: translate(0, 0) scale(.5); }
+  15% { opacity: .9; }
+  100% { opacity: 0; transform: translate(var(--particle-x), var(--particle-y)) rotate(var(--particle-turn)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .celebration-popup,
+  .celebration-popup[data-state],
+  .celebration-popup[data-animation][data-state],
+  .celebration-popup[data-swipe],
+  .celebration-timer-icon,
+  .celebration-trophy-icon { animation: none; transition: none; }
+  .trophy-burst { display: none; }
+}

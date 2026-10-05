@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import Signup from './pages/Signup';
@@ -22,15 +22,17 @@ import { loadFromFirestore } from './services/db';
 import { useSubscription } from './hooks/useSubscription.js';
 
 import { useGoalReminders } from './hooks/useGoalReminders';
+import { useCelebrations } from './hooks/useCelebrations';
 
 function App() {
-  const { user, isAuthLoading, setUser, setAuthLoading, clearUserData, goals, setGoals, setEntitlement } = useStore();
+  const { user, isAuthLoading, setUser, setAuthLoading, clearUserData, goals, setGoals, setEntitlement, failedSessions } = useStore();
   const activeGoalCount = goals.filter((g) => !g.completed).length;
   const [goalLoadAttempt, setGoalLoadAttempt] = useState(0);
   const [goalLoadError, setGoalLoadError] = useState(false);
   const [goalsLoading, setGoalsLoading] = useState(false);
   const uid = user?.uid;
   useGoalReminders(uid);
+  useCelebrations();
 
   // Single live entitlement subscription for the whole app, pushed into the
   // store so Header/AdvertisingManager/pricing screens all read the same
@@ -112,8 +114,12 @@ function App() {
         ) : (
           // Authenticated routes
           <AdvertisingManager>
-            <div className="min-h-screen bg-gray-100">
+            <div id="app-content" tabIndex={-1} className="min-h-screen bg-gray-100 focus:outline-none">
               <Header user={user} onSignOut={handleSignOut} />
+              {failedSessions.length > 0 && <div className="border-b border-red-200 bg-red-50 p-3 text-center text-sm text-red-800">
+                Some timer progress could not be saved and is only recorded locally.{' '}
+                <Link to="/goals" className="font-medium underline">Go to Goals and use Save to retry before leaving.</Link>
+              </div>}
               {goalsLoading && <p role="status" className="p-3 text-center">Loading your goals...</p>}
               {goalLoadError && <div role="alert" className="p-3 text-center text-red-700">Your goals could not be loaded. <button className="underline" onClick={() => setGoalLoadAttempt(value => value + 1)}>Retry loading goals</button></div>}
               
@@ -137,8 +143,8 @@ function App() {
             </div>
           </AdvertisingManager>
         )}
+        <Toaster />
       </Router>
-      <Toaster />
       <PWAInstallPrompt />
     </>
   );
