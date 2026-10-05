@@ -285,6 +285,20 @@ test('admin previews replay without goal mutations and require a trusted admin',
   assert.equal(h.writes.length, 0);
 });
 
+test('full celebration motion defaults on and persists both choices on the device', () => {
+  const h = setup();
+  assert.equal(h.store.getState().fullCelebrationMotion, true);
+  h.store.getState().setFullCelebrationMotion(false);
+  assert.equal(h.storage.get('celebration-full-motion'), 'false');
+  const reloaded = setup({}, h.storage);
+  assert.equal(reloaded.store.getState().fullCelebrationMotion, false);
+  reloaded.store.getState().setFullCelebrationMotion(true);
+  assert.equal(setup({}, h.storage).store.getState().fullCelebrationMotion, true);
+  reloaded.store.getState().setUser({ uid: 'another-user' });
+  assert.equal(reloaded.store.getState().fullCelebrationMotion, true);
+  assert.equal(h.writes.length, 0, 'motion preference does not write goal data');
+});
+
 test('a zero-duration stop acknowledges no recorded time and cannot earn a trophy', async () => {
   const h = setup(); target(h);
   h.store.getState().startTimer('a'); await h.store.getState().stopTimer('a');

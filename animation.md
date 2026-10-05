@@ -6,6 +6,8 @@ Animation revision: the original brief icon effects have been replaced with inte
 
 Trophy spin revision: the cup now completes two 3D-style turns over 3.75 seconds, including its entrance delay. Its handles rotate around the vertical axis while the star and reflection move around the bowl, disappearing on the back and returning at the front. An elliptical rim gives the cup depth; the rounded bowl keeps its volume instead of flipping like a flat card. Confetti and replay remain. The timer sequence is unchanged.
 
+App-wide motion revision: full interactive motion is enabled by default for both real celebrations and admin previews. The shared “Play full motion across the app” checkbox appears in regular Settings and Admin Settings. Its device-local preference survives navigation and reloads. Turning it off follows the device's motion preference; when that preference is reduced motion, celebrations become static. The earlier preview-only checkbox and event flag have been removed.
+
 ## Intended behavior
 
 Interpretation of the request: show feedback when a user stops a running timer while using the app, with a noticeably different celebration when that session earns a trophy. This is an in-app popup, not an operating-system notification or an animation on every app launch.
@@ -23,11 +25,11 @@ These are proposed product choices, not existing behavior:
 | Interaction | Click/tap the stopwatch or Replay animation to restart the scene | Click/tap the trophy or Replay animation to restart the celebration |
 | Visible duration | 8 seconds after success; 12 seconds for admin previews | 10 seconds after success; 12 seconds for admin previews |
 | Exit | 150ms fade | 180ms fade |
-| Reduced motion | Static stopwatch and checkmark | Static gold trophy, no particles or bounce |
+| Reduced motion, when full motion is turned off | Static stopwatch and checkmark | Static gold trophy, no particles or bounce |
 
 Timing values are starting points for visual testing, not research-mandated thresholds. Avoid sound, looping motion, flashing, full-screen confetti, and focus-stealing dialogs. Use seconds for sessions under one minute; do not display positive recorded time as “0m.”
 
-Animations play once and settle. Hover/focus pauses popup dismissal using the existing Radix behavior. Admin settings detect reduced motion and offer an explicit “Play full motion in previews” checkbox; this opt-in applies only to sample previews. Real timer and trophy events always honor the device setting. Saving/empty timer states show a static stopwatch without the success checkmark or replay action.
+Animations play once and settle. Hover/focus pauses popup dismissal using the existing Radix behavior. All timer, manual-time trophy, and preview popups read the same app-wide motion preference at render time, so changing the checkbox also updates an open celebration. Saving/empty timer states show a static stopwatch without the success checkmark or replay action.
 
 ## Repository findings
 
@@ -49,7 +51,7 @@ Reuse Radix Toast for the popup behavior and CSS keyframes for the visual effect
 
 Animate `transform` and `opacity` for the card, trophy, and particles. Avoid animating layout dimensions or positions such as width, height, top, and left. A small CSS particle effect is sufficient; a canvas or asset-animation dependency would add complexity without a requirement for it here. [web.dev animation performance guide](https://web.dev/articles/animations-guide)
 
-Respect `prefers-reduced-motion` and retain the full message when decorative motion is disabled. WCAG's Animation from Interactions criterion supports disabling nonessential interaction-triggered motion; it is a Level AAA criterion, used here as a design target. [W3C animation guidance](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html)
+Allow the user to follow `prefers-reduced-motion` by turning off the app-wide full-motion preference, and retain the full message when decorative motion is disabled. Full motion is the product default requested for this app. WCAG's Animation from Interactions criterion supports disabling nonessential interaction-triggered motion; it is a Level AAA criterion, used here as a design target. [W3C animation guidance](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html)
 
 Announce success without moving keyboard focus. Use Radix's announcement mechanism configured for polite delivery and verify it with a screen reader; avoid adding a second live region that repeats the same message. Decorative icons and particles should be hidden from assistive technology. [W3C status-message guidance](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html)
 
@@ -73,7 +75,7 @@ Announce success without moving keyboard focus. Use Radix's announcement mechani
 | `src/index.css` | Add scoped animation rules and reduced-motion overrides. Avoid changing all existing animation utilities globally. |
 | `tailwind.config.js` | Optional alternative location for named keyframes; choose CSS or Tailwind as the single definition source. |
 | `src/services/goals.ts`, `public/sw.js`, `src/services/notifications.ts` | Integration review and regression coverage; no expected functional changes for the baseline plan. |
-| `src/pages/Settings.tsx` | Optional later preference to disable celebrations; OS reduced-motion support is part of the baseline. |
+| `src/pages/Settings.tsx` | Hosts the shared app-wide full-motion preference, also available from Admin Settings. |
 
 Login, signup, and landing pages should never display an old user's queued celebrations. No database schema, security-rule, billing, or dependency changes are expected.
 
@@ -91,6 +93,7 @@ The modules below implement the shared event and popup system.
 | `src/components/celebrations/TrophyBurst.tsx` | Small, finite, decorative CSS particle layer with no pointer interception. Could remain private to trophy content if sufficiently small. |
 | `src/components/celebrations/CelebrationScene.tsx` | Shared interactive stage with native SVG stopwatch/trophy artwork, finite animation sequences, and focus-preserving replay controls. |
 | `src/hooks/useReducedMotion.ts` | Observe the device setting and explain static previews in admin settings. |
+| `src/components/celebrations/CelebrationMotionSettings.tsx` | Shared persistent motion checkbox for regular Settings and Admin Settings. |
 
 Keep event state transient in Zustand and separate from persisted Goal data. These content components use the shared toast shell, not independent portals or notification providers.
 
@@ -150,9 +153,9 @@ Validation commands: `npm run test:timers`, `npx tsx --test tests/practiceTime.t
 
 - Admin Dashboard now has a Settings tab containing Timer and Trophy icon buttons. These preview the real animation components using sample data, without remote writes or goal-progress changes. Clicking again replays the preview. Both rendering and the preview action require `isTrustedAdmin`.
 - One shared Radix toast queue presents timer, trophy, error, and completion feedback. Timer saves update their existing message; newly confirmed trophies use the gold animation. Errors interrupt while preserving the backlog.
-- `src/hooks/usePopupAvailability.ts` defers presentation while the document is hidden, a dialog/backdrop is visible, or the timer permission prompt is open. The popup appears above the timer/PWA area and respects reduced motion.
+- `src/hooks/usePopupAvailability.ts` defers presentation while the document is hidden, a dialog/backdrop is visible, or the timer permission prompt is open. The popup appears above the timer/PWA area. The shared toaster applies the motion preference consistently to every timer and trophy event source.
 - Failed timer progress retains a recovery candidate in memory and a persistent authenticated-shell reminder. Only confirmation of a snapshot containing that recorded progress recovers its award. Auth-session generation checks discard late results after account changes.
 - Radix toast roots remount on meaningful status changes so its announcement text refreshes. Ordinary save confirmation skips the card entrance animation and preserves focus if the popup already held it. Keyboard focus after the final timer stop moves to the stable app shell.
 - Automated coverage includes the real admin Settings tab and both previews, pending/saved/error outcomes, recovery, manual awards, modal/hidden-tab deferral, Escape dismissal, 320px layout, reduced motion, and announcement text. Tests use isolated APIs and sample goals.
-- Interactive-scene coverage samples multiple animation frames to verify actual hand, ring, checkmark, trophy, and confetti movement. It exercises artwork clicks and keyboard replay, checks that goal data and remote write counts remain unchanged, and verifies the explicit reduced-motion preview override. Desktop and mobile screenshots were visually reviewed.
+- Interactive-scene coverage samples multiple animation frames to verify actual hand, ring, checkmark, trophy, and confetti movement. It exercises artwork clicks and keyboard replay, and checks that preview interactions leave goal data and remote write counts unchanged. Motion regression coverage keeps the OS in reduced-motion mode while checking real timer stops, calendar manual-time awards, replay, settings navigation, and reload persistence. Desktop and mobile screenshots were visually reviewed.
 - Browser automation checks the generated live-region content; a manual screen-reader review remains useful for delivery behavior on each supported platform. Cross-device exactly-once trophy delivery remains outside this implementation.

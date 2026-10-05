@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useStore, MAX_ACTIVE_TIMERS_LIMIT } from '../store';
+import { CelebrationMotionSettings } from '../components/celebrations/CelebrationMotionSettings';
 
 export function Settings() {
   const navigate = useNavigate();
@@ -28,6 +29,10 @@ export function Settings() {
         <h1 className="text-2xl font-bold mb-6">Global Settings</h1>
         
         <div className="space-y-6">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold">Celebration animations</h3>
+            <CelebrationMotionSettings />
+          </div>
           <div className="space-y-2">
             <h3 className="text-lg font-semibold">Default Goal Settings</h3>
             <p className="text-gray-600 text-sm">

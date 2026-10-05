@@ -15,10 +15,12 @@ test('admin previews and real timer/manual outcomes share accessible, responsive
       contents: `
         import React, { useState } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+        import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
         import AdminDashboard from './src/components/AdminDashboard';
         import { ActiveTimer } from './src/components/ActiveTimer';
         import { ManualTimeDialog } from './src/components/ManualTimeDialog';
+        import { Calendar } from './src/components/Calendar';
+        import { Settings } from './src/pages/Settings';
         import { Toaster } from './src/components/ui/toaster';
         import { useCelebrations } from './src/hooks/useCelebrations';
         import { useStore } from './src/store';
@@ -47,17 +49,23 @@ test('admin previews and real timer/manual outcomes share accessible, responsive
         };
         function Fixture() {
           useCelebrations();
-          const [manual, setManual] = useState(false);
+          const [manual, setManual] = useState(null);
+          const [month, setMonth] = useState(new Date());
           const location = useLocation();
-          window.openManual = () => setManual(true);
+          window.navigateFixture = useNavigate();
+          window.openManual = () => setManual(new Date());
           return <>
             <header className="h-16 bg-white border-b p-4">Goal Calendly</header>
             <main id="app-content" tabIndex={-1}>
               <span data-testid="route">{location.pathname}</span>
-              <Routes><Route path="*" element={<AdminDashboard />} /></Routes>
+              <Routes>
+                <Route path="/goals" element={<Calendar practiceDays={[]} currentMonth={month} onMonthChange={setMonth} onDayClick={setManual} />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="*" element={<AdminDashboard />} />
+              </Routes>
             </main>
             <ActiveTimer /><Toaster />
-            {manual && <ManualTimeDialog goal={useStore.getState().goals[0]} date={new Date()} onClose={() => setManual(false)} />}
+            {manual && <ManualTimeDialog goal={useStore.getState().goals[0]} date={manual} onClose={() => setManual(null)} />}
           </>;
         }
         createRoot(document.getElementById('root')).render(<React.StrictMode><MemoryRouter initialEntries={['/admin']}><Fixture /></MemoryRouter></React.StrictMode>);
@@ -194,16 +202,17 @@ test('admin previews and real timer/manual outcomes share accessible, responsive
     await page.getByRole('button', { name: 'Preview trophy animation' }).click();
     await page.getByText('Trophy earned!', { exact: true }).waitFor();
     await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(await page.getByLabel('Play full motion across the app').isChecked(), true);
+    assert.equal(await page.locator('.trophy-handles').evaluate(element => getComputedStyle(element).animationName), 'trophy-handle-orbit', 'full motion is enabled by default, including on reduced-motion devices');
+    await page.getByLabel('Play full motion across the app').uncheck();
     assert.equal(await popup.evaluate(element => getComputedStyle(element).animationName), 'none');
     assert.equal(await page.locator('.trophy-burst').evaluate(element => getComputedStyle(element).display), 'none');
     assert.equal(await page.locator('.trophy-cup').evaluate(element => getComputedStyle(element).animationName), 'none');
     assert.equal(await page.locator('.trophy-handles').evaluate(element => getComputedStyle(element).animationName), 'none');
-    await page.getByLabel('Play full motion in previews').check();
-    await page.getByRole('button', { name: 'Preview trophy animation' }).click();
+    await page.getByLabel('Play full motion across the app').check();
     await page.waitForFunction(() => document.querySelector('.celebration-popup')?.getAttribute('data-full-motion') === 'true');
     assert.equal(await page.locator('.trophy-cup').evaluate(element => getComputedStyle(element).animationName), 'trophy-lift');
-    await page.getByLabel('Play full motion in previews').uncheck();
-    await page.getByRole('button', { name: 'Preview trophy animation' }).click();
+    await page.getByLabel('Play full motion across the app').uncheck();
     await page.waitForFunction(() => document.querySelector('.celebration-popup')?.getAttribute('data-full-motion') === 'false');
     await page.setViewportSize({ width: 320, height: 720 });
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -235,14 +244,29 @@ test('admin previews and real timer/manual outcomes share accessible, responsive
     await page.getByText('Timer stopped', { exact: true }).waitFor();
     await popup.getByRole('button', { name: 'Close' }).click(); await popup.waitFor({ state: 'detached' });
 
-    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    // Keep OS reduced motion enabled: real task/calendar outcomes must still animate.
+    await page.getByLabel('Play full motion across the app').check();
+    assert.equal(await page.evaluate(() => localStorage.getItem('celebration-full-motion')), 'true');
+    await page.reload();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    assert.equal(await page.getByLabel('Play full motion across the app').isChecked(), true, 'motion preference survives reload');
+    await page.evaluate(() => window.navigateFixture('/settings'));
+    await page.getByRole('heading', { name: 'Global Settings' }).waitFor();
+    assert.equal(await page.getByLabel('Play full motion across the app').isChecked(), true, 'regular settings share the admin preference');
+    await page.getByLabel('Play full motion across the app').uncheck();
+    assert.equal(await page.evaluate(() => localStorage.getItem('celebration-full-motion')), 'false');
+    await page.getByLabel('Play full motion across the app').check();
+    await page.evaluate(() => window.navigateFixture('/goals'));
+    await page.waitForFunction(() => document.querySelector('[data-testid="route"]').textContent === '/goals');
     await page.evaluate(() => { window.resetFixture(); window.apiMode = 'pending'; window.beginSession('Practice', 25 * 60000); });
     await page.getByRole('button', { name: 'Stop timer for Practice' }).click();
-    await page.getByText(/recorded locally. Saving/).waitFor();
+    await popup.getByText(/recorded locally. Saving/).waitFor();
     assert.equal(await page.evaluate(() => document.activeElement.id), 'app-content');
     await popup.getByRole('button', { name: 'Close' }).focus();
     await page.evaluate(() => window.finishSave({ ok: true }));
-    await page.getByText(/25m saved/).waitFor();
+    await popup.getByText(/25m saved/).waitFor();
+    assert.equal(await popup.getAttribute('data-full-motion'), 'true');
+    assert.equal(await page.locator('.timer-hand').evaluate(element => getComputedStyle(element).animationName), 'timer-hand-sweep', 'real task timer uses full motion');
     assert.equal(await popup.count(), 1);
     assert.equal(await popup.getByRole('button', { name: 'Close' }).evaluate(element => element === document.activeElement), true);
     assert.equal(await popup.evaluate(element => getComputedStyle(element).animationName), 'none', 'save confirmation must not replay the card entrance');
@@ -268,15 +292,21 @@ test('admin previews and real timer/manual outcomes share accessible, responsive
     assert.equal(await page.evaluate(() => window.celebrationTest.getState().goals[0].totalTimeSpent >= 1), true);
     await page.evaluate(() => window.celebrationTest.getState().saveGoals());
     await page.getByText('Trophy earned!', { exact: true }).waitFor();
+    assert.equal(await page.locator('.trophy-handles').evaluate(element => getComputedStyle(element).animationName), 'trophy-handle-orbit', 'a recovered real trophy uses full motion');
     await popup.getByRole('button', { name: 'Close' }).click(); await popup.waitFor({ state: 'detached' });
 
-    await page.evaluate(() => { window.resetFixture(); window.openManual(); });
+    await page.evaluate(() => window.resetFixture());
+    await page.locator('button[aria-label^="Add time for"]:not([disabled])').last().click();
     await page.getByRole('dialog').waitFor();
     await page.getByLabel('Hours', { exact: true }).fill('1');
     await page.getByLabel('Minutes', { exact: true }).fill('0');
     await page.getByRole('button', { name: 'Save time', exact: true }).click();
     await page.getByRole('dialog').waitFor({ state: 'detached' });
     await page.getByText('Trophy earned!', { exact: true }).waitFor();
+    assert.equal(await popup.getAttribute('data-full-motion'), 'true');
+    assert.equal(await page.locator('.trophy-handles').evaluate(element => getComputedStyle(element).animationName), 'trophy-handle-orbit', 'calendar manual-time awards use full motion');
+    await popup.getByRole('button', { name: 'Replay trophy celebration' }).click();
+    assert.equal(await page.locator('.celebration-art').getAttribute('data-run'), '1');
     await popup.getByRole('button', { name: 'Close' }).click(); await popup.waitFor({ state: 'detached' });
 
     await page.evaluate(() => { window.openManual(); window.celebrationTest.getState().previewCelebration('timer'); });

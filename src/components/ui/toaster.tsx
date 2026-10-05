@@ -5,9 +5,11 @@ import { TimerStoppedContent } from '../celebrations/TimerStoppedContent';
 import { TrophyEarnedContent } from '../celebrations/TrophyEarnedContent';
 import { Link } from 'react-router-dom';
 import { useCallback, useEffect, useRef } from 'react';
+import { useStore } from '../../store';
 
 export function Toaster() {
   const { toasts } = useToast();
+  const fullMotion = useStore(state => state.fullCelebrationMotion);
   const canShow = usePopupAvailability();
   const visible = canShow ? toasts.slice(0, 1) : [];
   const current = visible[0];
@@ -38,7 +40,7 @@ export function Toaster() {
         return (
           <Toast key={`${id}:${celebration?.kind ?? 'default'}:${celebration?.saveState ?? ''}`} ref={popupRef}
             {...props} animationVariant={animationVariant} data-celebration={celebration?.kind} data-popup-id={id} data-entrance={entrance}
-            data-full-motion={celebration?.source === 'preview' && celebration.fullMotionPreview === true}>
+            data-full-motion={fullMotion && (celebration?.kind === 'timer' || celebration?.kind === 'trophy')}>
             {celebration?.kind === 'timer' ? <TimerStoppedContent event={celebration} />
               : celebration?.kind === 'trophy' ? <TrophyEarnedContent event={celebration} />
               : celebration?.kind === 'error' ? <div className="min-w-0 space-y-2">

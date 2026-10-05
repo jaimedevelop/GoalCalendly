@@ -14,8 +14,6 @@ export interface CelebrationEvent {
   error?: string;
   dismissed?: boolean;
   suppressed?: boolean;
-  /** Explicit admin preview choice; never applied to real session events. */
-  fullMotionPreview?: boolean;
 }
 
 export interface FailedSession {

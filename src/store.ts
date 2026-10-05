@@ -14,7 +14,9 @@ interface Store {
   celebratedPeriods: string[];
   dismissCelebration: (id: string) => void;
   confirmProgressSaved: (snapshot: Goal, event?: CelebrationEvent) => void;
-  previewCelebration: (kind: 'timer' | 'trophy', fullMotion?: boolean) => void;
+  previewCelebration: (kind: 'timer' | 'trophy') => void;
+  fullCelebrationMotion: boolean;
+  setFullCelebrationMotion: (enabled: boolean) => void;
   goals: Goal[];
   /** Most recently started timer (or idle state); kept for single-timer consumers. */
   activeTimer: { goalId: string | null } & Timer;
@@ -67,7 +69,13 @@ interface Store {
 export const DEFAULT_MAX_ACTIVE_TIMERS = 3;
 export const MAX_ACTIVE_TIMERS_LIMIT = 20;
 const MAX_TIMERS_KEY = 'max-active-timers';
+const CELEBRATION_MOTION_KEY = 'celebration-full-motion';
 let celebrationSequence = 0;
+
+function loadCelebrationMotion() {
+  try { return localStorage.getItem(CELEBRATION_MOTION_KEY) !== 'false'; }
+  catch { return true; }
+}
 
 function clampMaxTimers(value: number) {
   return Number.isFinite(value)
@@ -95,6 +103,11 @@ export function shouldShowAds(entitlement: Entitlement | null, isLoading: boolea
 }
 
 export const useStore = create<Store>((set, get) => ({
+  fullCelebrationMotion: loadCelebrationMotion(),
+  setFullCelebrationMotion: enabled => {
+    try { localStorage.setItem(CELEBRATION_MOTION_KEY, String(enabled)); } catch { /* Keep the in-memory preference. */ }
+    set({ fullCelebrationMotion: enabled });
+  },
   authGeneration: 0,
   celebrations: [],
   failedSessions: [],
@@ -128,12 +141,12 @@ export const useStore = create<Store>((set, get) => ({
     return { celebrations, celebratedPeriods,
       failedSessions: state.failedSessions.filter(session => !recovered.includes(session)) };
   }),
-  previewCelebration: (kind, fullMotion = false) => {
+  previewCelebration: (kind) => {
     const user = get().user;
     if (!user?.isTrustedAdmin) return;
     const event: CelebrationEvent = {
       id: `preview:${++celebrationSequence}`, userId: user.uid, goalId: 'preview', goalName: 'Focus session',
-      source: 'preview', kind, durationMs: 25 * 60000, fullMotionPreview: fullMotion,
+      source: 'preview', kind, durationMs: 25 * 60000,
       periodKeys: kind === 'trophy' ? ['weekly:preview'] : [], saveState: 'saved', createdAt: Date.now(),
     };
     set(state => ({ celebrations: [...state.celebrations.filter(item => item.source !== 'preview'), event] }));
