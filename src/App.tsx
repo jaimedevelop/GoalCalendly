@@ -19,6 +19,8 @@ import { onAuthStateChange, signOutUser } from './services/auth';
 import { loadFromFirestore } from './services/db';
 import { useSubscription } from './hooks/useSubscription.js';
 
+import { useGoalReminders } from './hooks/useGoalReminders';
+
 function App() {
   const { user, isAuthLoading, setUser, setAuthLoading, clearUserData, goals, setGoals, setEntitlement } = useStore();
   const activeGoalCount = goals.filter((g) => !g.completed).length;
@@ -26,6 +28,7 @@ function App() {
   const [goalLoadError, setGoalLoadError] = useState(false);
   const [goalsLoading, setGoalsLoading] = useState(false);
   const uid = user?.uid;
+  useGoalReminders(uid);
 
   // Single live entitlement subscription for the whole app, pushed into the
   // store so Header/AdvertisingManager/pricing screens all read the same

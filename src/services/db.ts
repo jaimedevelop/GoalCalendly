@@ -198,6 +198,7 @@ export async function loadFromFirestore(authenticatedUid?: string): Promise<Goal
         completed: data.completed,
         completedDate: data.completedDate,
         lastTimerStartedAt: data.lastTimerStartedAt,
+        ...(data.progressPeriods ? { progressPeriods: data.progressPeriods } : {}),
         weeklyTrophies: data.weeklyTrophies || []
       };
       
@@ -236,6 +237,7 @@ export async function getGoalFromFirestore(goalId: string): Promise<Goal | null>
         completed: data.completed,
         completedDate: data.completedDate,
         lastTimerStartedAt: data.lastTimerStartedAt,
+        ...(data.progressPeriods ? { progressPeriods: data.progressPeriods } : {}),
         weeklyTrophies: data.weeklyTrophies || []
       } as Goal;
     }
@@ -319,6 +321,7 @@ export async function getCompletedGoalsFromFirestore(): Promise<Goal[]> {
         completed: data.completed,
         completedDate: data.completedDate,
         lastTimerStartedAt: data.lastTimerStartedAt,
+        ...(data.progressPeriods ? { progressPeriods: data.progressPeriods } : {}),
         weeklyTrophies: data.weeklyTrophies || []
       } as Goal);
     });

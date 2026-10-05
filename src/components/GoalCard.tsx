@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Timer, Trophy, Settings, Pencil, Trash2, CalendarIcon } from 'lucide-react';
 import { Goal } from '../types';
 import { useStore } from '../store';
-import { formatDistanceToNow, format, getWeek } from 'date-fns';
+import { formatDistanceToNow, format, getWeek, getWeekYear, subWeeks } from 'date-fns';
 import { Calendar } from './Calendar';
+import { currentProgress } from '../services/practiceTime';
+import { ManualTimeDialog } from './ManualTimeDialog';
 import { SettingsDialog } from './SettingsDialog';
 import { useToast } from '../hooks/useToast';
 import { reopenGoal } from '../services/goals.js';
@@ -18,8 +20,11 @@ export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(goal.name);
+  const progress = currentProgress(goal);
+  const target = goal.settings.target;
   const isActive = activeTimer.goalId === goal.id;
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [manualDate, setManualDate] = useState<Date | null>(null);
   const { toast } = useToast();
 
   const handleNoteChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -102,16 +107,14 @@ export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
     if (viewType !== 'top') return null;
 
     const currentDate = new Date();
-    const currentWeek = getWeek(currentDate);
-    const startWeek = currentWeek - 2; // Show current week and 2 previous weeks
-
-    const weeks = Array.from({ length: 3 }, (_, i) => startWeek + i);
-    const currentYear = currentDate.getFullYear();
+    const weeks = [subWeeks(currentDate, 2), subWeeks(currentDate, 1), currentDate];
 
     return (
       <div className="mt-4 border rounded-lg p-4 bg-gray-50">
         <div className="flex justify-between items-center">
-          {weeks.map((weekNum) => {
+          {weeks.map((date) => {
+            const weekNum = getWeek(date);
+            const currentYear = getWeekYear(date);
             const weekTrophy = goal.weeklyTrophies?.find(
               w => w.weekNumber === weekNum && w.year === currentYear
             );
@@ -187,6 +190,7 @@ export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
             practiceDays={goal.practiceDays || []}
             currentMonth={currentMonth}
             onMonthChange={setCurrentMonth}
+            onDayClick={setManualDate}
           />
         ) : (
           renderCompactCalendar()
@@ -204,7 +208,7 @@ export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
                 className="h-full bg-green-500 transition-all"
                 style={{
                   width: `${Math.min(
-                    (goal.weeklyTimeSpent / goal.weeklyGoal) * 100,
+                    (target.type === 'hours' && target.value > 0 ? progress / target.value : 0) * 100,
                     100
                   )}%`,
                 }}
@@ -212,8 +216,8 @@ export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
             </div>
 
             <div className="flex justify-between text-sm">
-              <span>{goal.weeklyTimeSpent.toFixed(1)} hours this week</span>
-              <span>Goal: {goal.weeklyGoal} hours</span>
+              <span>{progress.toFixed(1)} hours ({goal.settings.frequency})</span>
+              <span>Goal: {target.value} {target.type}</span>
             </div>
           </div>
 
@@ -263,6 +267,7 @@ export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
         </div>
       </div>
 
+      {manualDate && <ManualTimeDialog goal={goal} date={manualDate} onClose={() => setManualDate(null)} />}
       {showSettings && (
         <SettingsDialog
           goal={goal}

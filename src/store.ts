@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { Goal, Timer, GoalSettings, DEFAULT_GOAL_SETTINGS, LEVELS, WeeklyTrophy, Entitlement } from './types';
-import { format, getWeek } from 'date-fns';
+import { Goal, Timer, GoalSettings, DEFAULT_GOAL_SETTINGS, Entitlement } from './types';
+import { addDays, isValid, startOfDay } from 'date-fns';
+import { normalizeProgress, practiceTimeUpdates } from './services/practiceTime';
 import { AuthUser } from './services/auth.js';
 import { createGoal, updateGoalFields, completeGoal, deleteGoalRemote, saveGoalSnapshots } from './services/goals.js';
 
@@ -31,6 +32,7 @@ interface Store {
   deleteGoal: (goalId: string) => Promise<boolean>;
   startTimer: (goalId: string) => void;
   stopTimer: () => void;
+  addManualTime: (goalId: string, date: Date, minutes: number) => Promise<boolean>;
   resetTimer: () => void;
   setGoals: (goals: Goal[]) => void;
   updateDefaultSettings: (settings: Partial<GoalSettings>) => void;
@@ -51,53 +53,6 @@ export function shouldShowAds(entitlement: Entitlement | null, isLoading: boolea
   if (isLoading || !entitlement) return false;
   return entitlement.hasAdvertising;
 }
-
-const calculateWeeklyTrophies = (weeklyTimeSpent: number, weeklyGoal: number): number => {
-  if (weeklyTimeSpent >= weeklyGoal) {
-    return Math.floor(weeklyTimeSpent / weeklyGoal);
-  }
-  return 0;
-};
-
-const checkAndUpdateTrophies = (goal: Goal): { trophies: number; weeklyTrophies: WeeklyTrophy[] } => {
-  const currentDate = new Date();
-  const weekNumber = getWeek(currentDate);
-  const year = currentDate.getFullYear();
-  
-  let weeklyTrophies = goal.weeklyTrophies || [];
-  let currentWeekTrophy = weeklyTrophies.find(
-    w => w.weekNumber === weekNumber && w.year === year
-  );
-  
-  if (!currentWeekTrophy) {
-    currentWeekTrophy = {
-      weekNumber,
-      year,
-      trophies: calculateWeeklyTrophies(goal.weeklyTimeSpent, goal.weeklyGoal),
-      weeklyTimeSpent: goal.weeklyTimeSpent
-    };
-    weeklyTrophies = [...weeklyTrophies, currentWeekTrophy];
-  } else {
-    currentWeekTrophy = {
-      ...currentWeekTrophy,
-      trophies: calculateWeeklyTrophies(goal.weeklyTimeSpent, goal.weeklyGoal),
-      weeklyTimeSpent: goal.weeklyTimeSpent,
-    };
-    weeklyTrophies = weeklyTrophies.map(wt =>
-      wt.weekNumber === weekNumber && wt.year === year ? currentWeekTrophy! : wt
-    );
-  }
-
-  // Calculate total trophies from all weeks
-  const totalTrophies = weeklyTrophies.reduce((sum, week) => sum + week.trophies, 0);
-
-  return {
-    trophies: totalTrophies,
-    weeklyTrophies: weeklyTrophies.sort((a, b) => 
-      a.year === b.year ? a.weekNumber - b.weekNumber : a.year - b.year
-    )
-  };
-};
 
 export const useStore = create<Store>((set, get) => ({
   goals: [],
@@ -227,40 +182,20 @@ export const useStore = create<Store>((set, get) => ({
     const { activeTimer, goals } = get();
     if (!activeTimer.goalId || !activeTimer.startTime) return;
 
-    const elapsedHours = (Date.now() - activeTimer.startTime) / (1000 * 60 * 60);
+    const stoppedAt = Date.now();
     const goal = goals.find((g) => g.id === activeTimer.goalId);
     if (!goal) return;
 
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const updatedPracticeDays = goal.practiceDays || [];
-    if (!updatedPracticeDays.includes(today)) {
-      updatedPracticeDays.push(today);
+    let updatedGoal = goal;
+    let timerUpdates: Partial<Goal> = { lastTimerStartedAt: 0 };
+    let cursor = activeTimer.startTime;
+    while (cursor < stoppedAt) {
+      const end = Math.min(addDays(startOfDay(new Date(cursor)), 1).getTime(), stoppedAt);
+      const progress = practiceTimeUpdates(updatedGoal, new Date(cursor), (end - cursor) / 3600000, new Date(stoppedAt));
+      updatedGoal = { ...updatedGoal, ...progress };
+      timerUpdates = { ...timerUpdates, ...progress };
+      cursor = end;
     }
-
-    const newWeeklyTimeSpent = goal.weeklyTimeSpent + elapsedHours;
-    const { trophies, weeklyTrophies } = checkAndUpdateTrophies({
-      ...goal,
-      weeklyTimeSpent: newWeeklyTimeSpent
-    });
-
-    // Check for level up
-    let currentLevel = goal.currentLevel;
-    const totalTimeSpent = goal.totalTimeSpent + elapsedHours;
-
-    for (let i = currentLevel - 1; i < LEVELS.length; i++) {
-      if (totalTimeSpent >= LEVELS[i].requiredHours) {
-        currentLevel = i + 1;
-      }
-    }
-
-    const timerUpdates = {
-      totalTimeSpent,
-      weeklyTimeSpent: newWeeklyTimeSpent,
-      practiceDays: updatedPracticeDays,
-      trophies,
-      weeklyTrophies,
-      currentLevel,
-    };
 
     set((state) => ({
       goals: state.goals.map((g) => (g.id === goal.id ? { ...g, ...timerUpdates } : g)),
@@ -278,6 +213,15 @@ export const useStore = create<Store>((set, get) => ({
       if (!result.ok) set({ lastGoalError: result.error?.message ?? 'Could not save timer progress. Use Save to retry before leaving this page.' });
     });
   },
+  addManualTime: async (goalId, date, minutes) => {
+    const goal = get().goals.find(g => g.id === goalId);
+    if (!goal || !isValid(date) || startOfDay(date) > startOfDay(new Date()) ||
+        !Number.isFinite(minutes) || minutes <= 0 || minutes > 1440) {
+      set({ lastGoalError: 'Choose today or a past day and enter between 1 minute and 24 hours.' });
+      return false;
+    }
+    return get().updateGoal(goalId, practiceTimeUpdates(goal, date, minutes / 60));
+  },
   resetTimer: () =>
     set({
       activeTimer: {
@@ -294,14 +238,7 @@ export const useStore = create<Store>((set, get) => ({
   // must go through services/goals.ts (importGoals, etc.), which enforces
   // the active-goal quota server-side, rather than calling setGoals directly.
   setGoals: (goals) => {
-    const processedGoals = goals.map(goal => {
-      const { trophies, weeklyTrophies } = checkAndUpdateTrophies(goal);
-      return {
-        ...goal,
-        trophies,
-        weeklyTrophies: weeklyTrophies || []
-      };
-    });
+    const processedGoals = goals.map(goal => normalizeProgress(goal));
     set({ goals: processedGoals });
   },
   updateDefaultSettings: (settings) =>

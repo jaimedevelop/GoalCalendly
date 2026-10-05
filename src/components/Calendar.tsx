@@ -1,5 +1,6 @@
-import React from 'react';
 import {
+  addMonths,
+  startOfDay,
   startOfMonth,
   endOfMonth,
   eachDayOfInterval,
@@ -14,9 +15,10 @@ interface CalendarProps {
   practiceDays: string[];
   currentMonth: Date;
   onMonthChange: (date: Date) => void;
+  onDayClick?: (date: Date) => void;
 }
 
-export function Calendar({ practiceDays, currentMonth, onMonthChange }: CalendarProps) {
+export function Calendar({ practiceDays, currentMonth, onMonthChange, onDayClick }: CalendarProps) {
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart);
@@ -33,7 +35,8 @@ export function Calendar({ practiceDays, currentMonth, onMonthChange }: Calendar
     <div className="bg-white rounded-lg shadow p-4">
       <div className="flex justify-between items-center mb-4">
         <button
-          onClick={() => onMonthChange(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))}
+          aria-label="Previous month"
+          onClick={() => onMonthChange(addMonths(currentMonth, -1))}
           className="p-2 hover:bg-gray-100 rounded-full"
         >
           ←
@@ -42,13 +45,15 @@ export function Calendar({ practiceDays, currentMonth, onMonthChange }: Calendar
           {format(currentMonth, 'MMMM yyyy')}
         </h2>
         <button
-          onClick={() => onMonthChange(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))}
+          aria-label="Next month"
+          onClick={() => onMonthChange(addMonths(currentMonth, 1))}
           className="p-2 hover:bg-gray-100 rounded-full"
         >
           →
         </button>
       </div>
 
+      {onDayClick && <p className="text-xs text-gray-500 mb-3">Click a day to add time manually.</p>}
       <div className="grid grid-cols-7 gap-1 mb-2">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
           <div key={day} className="text-center text-sm font-medium text-gray-500">
@@ -61,10 +66,14 @@ export function Calendar({ practiceDays, currentMonth, onMonthChange }: Calendar
         {days.map((day) => {
           const isPracticed = isPracticeDay(day);
           return (
-            <div
+            <button
+              type="button"
               key={day.toString()}
+              onClick={() => onDayClick?.(day)}
+              disabled={!onDayClick || startOfDay(day) > startOfDay(new Date())}
+              aria-label={`Add time for ${format(day, 'MMMM d, yyyy')}${isPracticed ? ', practiced' : ''}`}
               className={`
-                h-10 flex items-center justify-center relative
+                h-10 flex items-center justify-center relative rounded-full enabled:hover:ring-2 enabled:hover:ring-blue-300 focus-visible:outline-blue-500 disabled:cursor-default
                 ${!isSameMonth(day, currentMonth) ? 'text-gray-400' : 'text-gray-900'}
                 ${isToday(day) ? 'font-bold' : ''}
               `}
@@ -76,7 +85,7 @@ export function Calendar({ practiceDays, currentMonth, onMonthChange }: Calendar
               {!isPracticed && isSameMonth(day, currentMonth) && day < new Date() && (
                 <div className="absolute inset-1 bg-red-100 rounded-full" />
               )}
-            </div>
+            </button>
           );
         })}
       </div>

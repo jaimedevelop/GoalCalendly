@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore, shouldShowAds } from '../store';
-import { LEVELS, DEFAULT_GOAL_SETTINGS } from '../types';
+import { LEVELS } from '../types';
 import { AdvertisingDisplay } from './AdvertisingDisplay';
 
 export function NewGoalDialog({ onClose }: { onClose: () => void }) {
@@ -9,7 +9,7 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const addGoal = useStore((state) => state.addGoal);
-  const { entitlement, isEntitlementLoading } = useStore();
+  const { entitlement, isEntitlementLoading, defaultSettings } = useStore();
 
   const showAds = shouldShowAds(entitlement, isEntitlementLoading);
 
@@ -27,12 +27,12 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
       startDate: new Date().toISOString(),
       totalTimeSpent: 0,
       weeklyTimeSpent: 0,
-      weeklyGoal: parseInt(LEVELS[0].hours.split('-')[0]),
+      weeklyGoal: defaultSettings.target.value,
       medals: [],
       trophies: 0,
       practiceDays: [],
       weeklyTrophies: [],
-      settings: DEFAULT_GOAL_SETTINGS,
+      settings: structuredClone(defaultSettings),
     };
 
     // The server enforces the active-goal limit; a rejection here means the

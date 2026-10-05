@@ -1,3 +1,4 @@
+import { requestReminderPermission } from '../services/reminders';
 import React, { useState } from 'react';
 import { Goal, GoalSettings, Resource } from '../types';
 import { Settings, Plus, Trash2, Book, Video, GraduationCap, Code } from 'lucide-react';
@@ -5,10 +6,12 @@ import { Settings, Plus, Trash2, Book, Video, GraduationCap, Code } from 'lucide
 interface SettingsDialogProps {
   goal: Goal;
   onClose: () => void;
-  onUpdate: (settings: GoalSettings) => void;
+  onUpdate: (settings: GoalSettings) => Promise<boolean>;
 }
 
 export function SettingsDialog({ goal, onClose, onUpdate }: SettingsDialogProps) {
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<GoalSettings>(goal.settings);
   const [newResource, setNewResource] = useState<Partial<Resource>>({
     type: 'book',
@@ -118,8 +121,8 @@ export function SettingsDialog({ goal, onClose, onUpdate }: SettingsDialogProps)
               <input
                 type="number"
                 value={settings.target.value}
-                onChange={(e) => handleTargetChange('value', parseInt(e.target.value))}
-                min="1"
+                onChange={(e) => handleTargetChange('value', Number(e.target.value))}
+                min="0.01" step="any"
                 className="w-1/2 p-2 border rounded-md"
               />
             </div>
@@ -204,7 +207,11 @@ export function SettingsDialog({ goal, onClose, onUpdate }: SettingsDialogProps)
                 <input
                   type="checkbox"
                   checked={settings.notifications}
-                  onChange={(e) => handleSettingsChange('notifications', e.target.checked)}
+                  onChange={async (e) => {
+                    const enabled = e.target.checked;
+                    handleSettingsChange('notifications', enabled);
+                    if (enabled && !await requestReminderPermission()) setError('Browser notifications are unavailable or blocked. In-app reminders still work.');
+                  }}
                   className="w-4 h-4"
                 />
                 Enable notifications
@@ -212,6 +219,12 @@ export function SettingsDialog({ goal, onClose, onUpdate }: SettingsDialogProps)
             </div>
           </div>
 
+          <label className="block text-sm">Reminder time (local time)
+            <input aria-label="Reminder time" type="time" value={settings.reminderTime || '18:00'}
+              onChange={e => handleSettingsChange('reminderTime', e.target.value)} className="ml-2 border rounded p-2" />
+          </label>
+          <p className="text-sm text-gray-600">Reminders appear once a day while this app is open, until your current target is reached. Browser notifications require permission. Hour targets earn one trophy per completed day, week, or month.</p>
+          {error && <p role="alert" className="text-red-600">{error}</p>}
           {/* Save button */}
           <div className="flex justify-end space-x-2 pt-4">
             <button
@@ -221,9 +234,16 @@ export function SettingsDialog({ goal, onClose, onUpdate }: SettingsDialogProps)
               Cancel
             </button>
             <button
-              onClick={() => {
-                onUpdate(settings);
-                onClose();
+              disabled={saving}
+              onClick={async () => {
+                if (!Number.isFinite(settings.target.value) || settings.target.value <= 0) {
+                  setError('Enter a target greater than zero.'); return;
+                }
+                setSaving(true);
+                const saved = await onUpdate(settings);
+                setSaving(false);
+                if (saved) onClose();
+                else setError('Could not save settings. Please try again.');
               }}
               className="px-4 py-2 text-white bg-blue-500 rounded-md hover:bg-blue-600"
             >
