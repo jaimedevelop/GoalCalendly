@@ -3,7 +3,7 @@ import { Plus, Download, Upload, Share2, Settings, CheckSquare, Layout, Crown, S
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { GoalCard } from '../components/GoalCard';
-import { ActiveTimer } from '../components/ActiveTimer';
+import { sortActiveGoals } from '../services/goalOrder';
 import { NewGoalDialog } from '../components/NewGoalDialog';
 import { ShareDialog } from '../components/ShareDialog';
 import { ImportTimeDialog } from '../components/ImportTimeDialog';
@@ -23,16 +23,7 @@ export function Goals() {
   const { saveGoals, lastGoalError } = useStore();
   const [viewType, setViewType] = useState<ViewType>('top');
   const { goals, setGoals, defaultSettings, user, activeTimer, activeTimers } = useStore();
-  const activeGoals = goals
-    .filter(g => !g.completed)
-    .sort((a, b) => {
-      // Running timers first, most recently started on top (lastTimerStartedAt
-      // is set to the start time while running and to the stop time afterwards).
-      const aRunning = activeTimers.some(t => t.goalId === a.id);
-      const bRunning = activeTimers.some(t => t.goalId === b.id);
-      if (aRunning !== bRunning) return aRunning ? -1 : 1;
-      return (b.lastTimerStartedAt ?? 0) - (a.lastTimerStartedAt ?? 0);
-    });
+  const activeGoals = sortActiveGoals(goals, activeTimers);
   const importFileRef = useRef<HTMLInputElement>(null);
   const activeGoalRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -377,7 +368,6 @@ export function Goals() {
           onClose={() => setImportedGoals(null)}
         />
       )}
-      <ActiveTimer />
     </div>
   );
 }

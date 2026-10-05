@@ -1,4 +1,5 @@
 import type { GoalSettings } from '../types';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useStore, MAX_ACTIVE_TIMERS_LIMIT } from '../store';
@@ -6,6 +7,10 @@ import { useStore, MAX_ACTIVE_TIMERS_LIMIT } from '../store';
 export function Settings() {
   const navigate = useNavigate();
   const { defaultSettings, updateDefaultSettings, maxActiveTimers, setMaxActiveTimers } = useStore();
+  const [timerLimitInput, setTimerLimitInput] = useState(String(maxActiveTimers));
+  const [targetInput, setTargetInput] = useState(String(defaultSettings.target.value));
+  useEffect(() => setTimerLimitInput(String(maxActiveTimers)), [maxActiveTimers]);
+  useEffect(() => setTargetInput(String(defaultSettings.target.value)), [defaultSettings.target.value]);
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
@@ -26,7 +31,7 @@ export function Settings() {
           <div className="space-y-2">
             <h3 className="text-lg font-semibold">Default Goal Settings</h3>
             <p className="text-gray-600 text-sm">
-              These settings will be applied to all new goals you create.
+              These settings apply to new goals you create during this session.
             </p>
           </div>
 
@@ -66,14 +71,22 @@ export function Settings() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="default-target-value" className="block text-sm font-medium text-gray-700 mb-1">
                 Default Target Value
               </label>
               <input
+                id="default-target-value"
                 type="number"
-                value={defaultSettings.target.value}
-                onChange={(e) => updateDefaultSettings({ target: { ...defaultSettings.target, value: parseInt(e.target.value) } })}
-                min="1"
+                value={targetInput}
+                onChange={(e) => {
+                  setTargetInput(e.target.value);
+                  const value = Number(e.target.value);
+                  if (Number.isFinite(value) && value > 0) {
+                    updateDefaultSettings({ target: { ...defaultSettings.target, value } });
+                  }
+                }}
+                onBlur={() => setTargetInput(String(defaultSettings.target.value))}
+                min="0.01" step="any"
                 className="w-full p-2 border rounded-md"
               />
             </div>
@@ -87,13 +100,21 @@ export function Settings() {
             <input
               id="max-active-timers"
               type="number"
-              value={maxActiveTimers}
-              onChange={(e) => setMaxActiveTimers(parseInt(e.target.value))}
+              value={timerLimitInput}
+              onChange={(e) => {
+                setTimerLimitInput(e.target.value);
+                const value = Number(e.target.value);
+                if (Number.isInteger(value) && value >= 1 && value <= MAX_ACTIVE_TIMERS_LIMIT) {
+                  setMaxActiveTimers(value);
+                }
+              }}
+              onBlur={() => setTimerLimitInput(String(maxActiveTimers))}
               min="1"
+              step="1"
               max={MAX_ACTIVE_TIMERS_LIMIT}
               className="w-full p-2 border rounded-md"
             />
-            <p className="text-gray-600 text-sm">Between 1 and {MAX_ACTIVE_TIMERS_LIMIT}. Saved on this device.</p>
+            <p className="text-gray-600 text-sm">Between 1 and {MAX_ACTIVE_TIMERS_LIMIT}. Saved on this device. Lowering the limit keeps existing timers running; stop them before starting more.</p>
           </div>
 
           <div className="space-y-2">

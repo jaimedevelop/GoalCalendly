@@ -169,98 +169,32 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Timer notification handling
-let timerNotification = null;
+// Keep asynchronous updates in order so an older update cannot replace a
+// newer timer notification or reappear after Stop.
+let timerNotificationQueue = Promise.resolve();
 
 self.addEventListener('message', (event) => {
-  const { type, payload } = event.data;
-
-  switch (type) {
-    case 'SHOW_TIMER_NOTIFICATION':
-      showTimerNotification(payload);
-      break;
-    case 'UPDATE_TIMER_NOTIFICATION':
-      updateTimerNotification(payload);
-      break;
-    case 'CLEAR_TIMER_NOTIFICATION':
-      clearTimerNotification();
-      break;
-  }
-});
-
-function showTimerNotification(options) {
-  console.log('SW: Showing timer notification', options);
-  if (self.registration && self.registration.showNotification) {
-    const notificationTitle = `⏱️ ${options.title}`;
-    const notificationBody = `Timer: ${options.body}`;
-    
-    self.registration.showNotification(notificationTitle, {
-      body: notificationBody,
-      tag: options.tag || 'timer-notification',
-      requireInteraction: options.requireInteraction || true,
-      silent: options.silent || true,
+  const { type, payload } = event.data || {};
+  if (!['SHOW_TIMER_NOTIFICATION', 'UPDATE_TIMER_NOTIFICATION', 'CLEAR_TIMER_NOTIFICATION'].includes(type)) return;
+  timerNotificationQueue = timerNotificationQueue.then(async () => {
+    if (type === 'CLEAR_TIMER_NOTIFICATION') {
+      const notifications = await self.registration.getNotifications({ tag: 'timer-notification' });
+      notifications.forEach(notification => notification.close());
+      return;
+    }
+    await self.registration.showNotification(`Timer: ${payload.title}`, {
+      body: `Timer: ${payload.body}`,
+      tag: 'timer-notification',
+      requireInteraction: true,
+      silent: true,
       icon: '/icon-192x192.svg',
       badge: '/icon-192x192.svg',
-      ongoing: true,
-      actions: [
-        {
-          action: 'stop',
-          title: '⏹️ Stop',
-          icon: '/icon-192x192.svg'
-        }
-      ]
-    }).then(() => {
-      console.log('SW: Timer notification shown successfully');
-    }).catch(err => {
-      console.error('SW: Error showing notification:', err);
+      data: { goalId: payload.goalId, startTime: payload.startTime },
+      actions: [{ action: 'stop', title: 'Stop', icon: '/icon-192x192.svg' }]
     });
-  }
-}
-
-function updateTimerNotification(options) {
-  console.log('SW: Updating timer notification', options);
-  if (self.registration && self.registration.showNotification) {
-    self.registration.getNotifications({ tag: 'timer-notification' })
-      .then(notifications => {
-        if (notifications.length > 0) {
-          notifications[0].close();
-        }
-        
-        const notificationTitle = `⏱️ ${options.title}`;
-        const notificationBody = `Timer: ${options.body}`;
-        
-        return self.registration.showNotification(notificationTitle, {
-          body: notificationBody,
-          tag: 'timer-notification',
-          requireInteraction: true,
-          silent: true,
-          icon: '/icon-192x192.svg',
-          badge: '/icon-192x192.svg',
-          ongoing: true,
-          actions: [
-            {
-              action: 'stop',
-              title: '⏹️ Stop',
-              icon: '/icon-192x192.svg'
-            }
-          ]
-        }).then(() => {
-          console.log('SW: Timer notification updated successfully');
-        });
-      }).catch(err => {
-        console.error('SW: Error updating notification:', err);
-      });
-  }
-}
-
-function clearTimerNotification() {
-  if (self.registration) {
-    self.registration.getNotifications({ tag: 'timer-notification' })
-      .then(notifications => {
-        notifications.forEach(notification => notification.close());
-      });
-  }
-}
+  }).catch(error => console.error('Timer notification failed:', error));
+  event.waitUntil(timerNotificationQueue);
+});
 
 // Handle notification click events
 self.addEventListener('notificationclick', (event) => {
@@ -268,11 +202,11 @@ self.addEventListener('notificationclick', (event) => {
   
   if (event.action === 'stop') {
     // Send message to app to stop timer
-    self.clients.matchAll().then(clients => {
+    event.waitUntil(self.clients.matchAll().then(clients => {
       clients.forEach(client => {
-        client.postMessage({ type: 'STOP_TIMER' });
+        client.postMessage({ type: 'STOP_TIMER', goalId: event.notification.data?.goalId, startTime: event.notification.data?.startTime });
       });
-    });
+    }));
   } else {
     // Focus the app
     event.waitUntil(

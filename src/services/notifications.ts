@@ -2,6 +2,7 @@
 export class TimerNotificationService {
   private static instance: TimerNotificationService;
   private updateInterval: number | null = null;
+  private fallbackNotification: Notification | null = null;
   private isSupported: boolean;
 
   private constructor() {
@@ -24,17 +25,17 @@ export class TimerNotificationService {
       return await Notification.requestPermission();
     }
 
-    return Notification.permission;
+    return this.isSupported ? Notification.permission : 'denied';
   }
 
-  public async showTimerNotification(goalName: string, startTime: number): Promise<void> {
-    if (!this.isSupported || Notification.permission !== 'granted' || !startTime) {
+  public async showTimerNotification(goalName: string, startTime: number, goalId: string): Promise<void> {
+    if (!this.isSupported || Notification.permission !== 'granted' || !Number.isFinite(startTime)) {
       return;
     }
 
     try {
       // Clear any existing notification
-      await this.clearNotification();
+      this.clearNotification();
 
       // Create initial notification
       const elapsed = Date.now() - startTime;
@@ -45,6 +46,8 @@ export class TimerNotificationService {
         navigator.serviceWorker.controller.postMessage({
           type: 'SHOW_TIMER_NOTIFICATION',
           payload: {
+            goalId,
+            startTime,
             title: goalName,
             body: timeString,
             tag: 'timer-notification',
@@ -54,7 +57,7 @@ export class TimerNotificationService {
         });
       } else {
         // Fallback to regular notification
-        new Notification(`⏱️ ${goalName}`, {
+        this.fallbackNotification = new Notification(`⏱️ ${goalName}`, {
           body: `Timer: ${timeString}`,
           tag: 'timer-notification',
           requireInteraction: true,
@@ -64,17 +67,19 @@ export class TimerNotificationService {
       }
 
       // Start updating the notification
-      this.startNotificationUpdates(goalName, startTime);
+      this.startNotificationUpdates(goalName, startTime, goalId);
     } catch (error) {
       console.error('Error showing timer notification:', error);
     }
   }
 
-  public async clearNotification(): Promise<void> {
+  public clearNotification(): void {
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
     }
+    this.fallbackNotification?.close();
+    this.fallbackNotification = null;
 
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({
@@ -83,7 +88,7 @@ export class TimerNotificationService {
     }
   }
 
-  private startNotificationUpdates(goalName: string, startTime: number): void {
+  private startNotificationUpdates(goalName: string, startTime: number, goalId: string): void {
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
     }
@@ -92,12 +97,12 @@ export class TimerNotificationService {
       const elapsed = Date.now() - startTime;
       const timeString = this.formatTime(elapsed);
       
-      console.log('Notification: Updating with', { goalName, timeString });
-      
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
           type: 'UPDATE_TIMER_NOTIFICATION',
           payload: {
+            goalId,
+            startTime,
             title: goalName,
             body: timeString
           }
@@ -119,7 +124,7 @@ export class TimerNotificationService {
   }
 
   public getPermissionStatus(): NotificationPermission {
-    return Notification.permission;
+    return this.isSupported ? Notification.permission : 'denied';
   }
 }
 

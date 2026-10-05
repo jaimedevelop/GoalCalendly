@@ -18,6 +18,7 @@
     "emulators": "firebase emulators:start --only functions,firestore,auth",
     "functions:test:manual-ping": "node functions/tests/ping.manual.mjs",
     "test:rules": "node --test tests/firestore.rules.test.mjs",
+    "test:timers": "node --test tests/timers.test.mjs tests/timerNotifications.test.mjs tests/timerSettings.browser.test.mjs",
     "test:goal-limits": "node --test functions/tests/goalLimits.test.mjs",
     "test:webhook": "node --test functions/tests/stripeWebhook.test.mjs",
     "test:reconcile": "node --test functions/tests/reconcileSubscriptions.test.mjs",

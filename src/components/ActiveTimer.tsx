@@ -52,23 +52,29 @@ export function ActiveTimer() {
 
     const onMessage = (event: MessageEvent) => {
       if (event.data?.type === 'STOP_TIMER') {
-        stopTimer();
+        const timer = useStore.getState().activeTimers.find(t => t.goalId === event.data.goalId);
+        if (timer && timer.startTime === event.data.startTime) stopTimer(timer.goalId);
       }
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
-    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', onMessage);
+      timerNotificationService.clearNotification();
+    };
   }, [stopTimer]);
 
   useEffect(() => {
     // Show notification prompt when timer starts
-    if (activeTimer.isRunning && activeGoal && notificationPermission === 'default') {
+    if (timerNotificationService.isNotificationSupported() && activeTimer.isRunning && activeGoal && notificationPermission === 'default') {
       setShowNotificationPrompt(true);
     }
 
     // Handle notification when timer starts
-    if (activeTimer.isRunning && activeGoal && activeTimer.startTime && notificationPermission === 'granted') {
-      timerNotificationService.showTimerNotification(activeGoal.name, activeTimer.startTime);
+    if (activeTimer.isRunning && activeGoal && activeTimer.startTime !== null && notificationPermission === 'granted') {
+      timerNotificationService.showTimerNotification(activeGoal.name, activeTimer.startTime, activeGoal.id);
     }
+
+    if (!activeTimer.isRunning) setShowNotificationPrompt(false);
 
     // Clear notification when timer stops
     if (!activeTimer.isRunning) {
@@ -80,15 +86,11 @@ export function ActiveTimer() {
     const permission = await timerNotificationService.requestPermission();
     setNotificationPermission(permission);
     setShowNotificationPrompt(false);
-
-    if (permission === 'granted' && activeTimer.isRunning && activeGoal && activeTimer.startTime !== null) {
-      timerNotificationService.showTimerNotification(activeGoal.name, activeTimer.startTime);
-    }
   };
 
   const rows = activeTimers.flatMap((t) => {
     const goal = goals.find((g) => g.id === t.goalId);
-    return goal && t.startTime ? [{ goal, startTime: t.startTime }] : [];
+    return goal && t.startTime !== null ? [{ goal, startTime: t.startTime }] : [];
   });
 
   if (!rows.length) return null;

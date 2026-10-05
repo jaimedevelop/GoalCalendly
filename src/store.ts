@@ -9,7 +9,7 @@ interface Store {
   goals: Goal[];
   /** Most recently started timer (or idle state); kept for single-timer consumers. */
   activeTimer: { goalId: string | null } & Timer;
-  /** All running timers, most recently started first (capped by maxActiveTimers). */
+  /** All running timers, most recently started first. Lowering the limit preserves running timers. */
   activeTimers: ({ goalId: string } & Timer)[];
   /** User preference: how many timers may run at once. Stored per device. */
   maxActiveTimers: number;
@@ -143,6 +143,9 @@ export const useStore = create<Store>((set, get) => ({
     return true;
   },
   completeGoalById: async (goalId) => {
+    // Finish this session before hiding the goal, preserving its recorded time
+    // even if completion is rejected by the server.
+    get().stopTimer(goalId);
     const previous = get().goals.find((g) => g.id === goalId);
     if (!previous) return false;
     const completedDate = new Date().toISOString();
@@ -166,7 +169,7 @@ export const useStore = create<Store>((set, get) => ({
     const state = get();
     const previous = state.goals.find((g) => g.id === goalId);
     if (!previous) return false;
-    const previousTimers = state.activeTimers;
+    const removedTimer = state.activeTimers.find(t => t.goalId === goalId);
 
     set((s) => ({
       goals: s.goals.filter((goal) => goal.id !== goalId),
@@ -178,7 +181,9 @@ export const useStore = create<Store>((set, get) => ({
     if (!result.ok) {
       set((s) => ({
         goals: [...s.goals, previous],
-        ...withTimers(previousTimers),
+        ...withTimers(removedTimer
+          ? [...s.activeTimers, removedTimer].sort((a, b) => (b.startTime ?? 0) - (a.startTime ?? 0))
+          : s.activeTimers),
         lastGoalError: result.error?.message ?? 'Could not delete this goal.',
       }));
       return false;
@@ -203,13 +208,14 @@ export const useStore = create<Store>((set, get) => ({
       });
       return {
         goals,
+        lastGoalError: null,
         ...withTimers([{ goalId, isRunning: true, startTime, elapsedTime: 0 }, ...state.activeTimers]),
       };
     }),
   stopTimer: (goalId) => {
     const { activeTimers, goals } = get();
     const timer = goalId ? activeTimers.find(t => t.goalId === goalId) : activeTimers[0];
-    if (!timer || !timer.startTime) return;
+    if (!timer || timer.startTime === null) return;
 
     const stoppedAt = Date.now();
     const goal = goals.find((g) => g.id === timer.goalId);
@@ -260,8 +266,9 @@ export const useStore = create<Store>((set, get) => ({
   },
   updateDefaultSettings: (settings) =>
     set((state) => {
+      if (settings.target && (!Number.isFinite(settings.target.value) || settings.target.value <= 0)) return state;
       const newSettings = { ...state.defaultSettings, ...settings };
-      // Default settings are now user-specific and stored in Firestore
+      // Defaults apply to new goals for the current session.
       return { defaultSettings: newSettings };
     }),
   setUser: (user) => set({ user }),

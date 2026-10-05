@@ -9,6 +9,7 @@ import { CompletedGoals } from './pages/CompletedGoals';
 import { Help } from './pages/Help';
 import { Reports } from './pages/Reports';
 import { Header } from './components/Header';
+import { ActiveTimer } from './components/ActiveTimer';
 import { Toaster } from './components/ui/toaster';
 import AdminDashboard from './components/AdminDashboard';
 import SubscriptionPlan from './components/SubscriptionPlan';
@@ -132,6 +133,7 @@ function App() {
                 )}
                 <Route path="/" element={<Navigate to="/goals" replace />} />
               </Routes>}
+              <ActiveTimer />
             </div>
           </AdvertisingManager>
         )}
