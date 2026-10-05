@@ -14,7 +14,7 @@ interface Store {
   celebratedPeriods: string[];
   dismissCelebration: (id: string) => void;
   confirmProgressSaved: (snapshot: Goal, event?: CelebrationEvent) => void;
-  previewCelebration: (kind: 'timer' | 'trophy') => void;
+  previewCelebration: (kind: 'timer' | 'trophy', fullMotion?: boolean) => void;
   goals: Goal[];
   /** Most recently started timer (or idle state); kept for single-timer consumers. */
   activeTimer: { goalId: string | null } & Timer;
@@ -128,12 +128,12 @@ export const useStore = create<Store>((set, get) => ({
     return { celebrations, celebratedPeriods,
       failedSessions: state.failedSessions.filter(session => !recovered.includes(session)) };
   }),
-  previewCelebration: (kind) => {
+  previewCelebration: (kind, fullMotion = false) => {
     const user = get().user;
     if (!user?.isTrustedAdmin) return;
     const event: CelebrationEvent = {
       id: `preview:${++celebrationSequence}`, userId: user.uid, goalId: 'preview', goalName: 'Focus session',
-      source: 'preview', kind, durationMs: 25 * 60000,
+      source: 'preview', kind, durationMs: 25 * 60000, fullMotionPreview: fullMotion,
       periodKeys: kind === 'trophy' ? ['weekly:preview'] : [], saveState: 'saved', createdAt: Date.now(),
     };
     set(state => ({ celebrations: [...state.celebrations.filter(item => item.source !== 'preview'), event] }));

@@ -2,6 +2,8 @@
 
 Research date: October 5, 2026. Status: implemented, including admin animation previews. The original design and research are retained below; implementation notes appear at the end.
 
+Animation revision: the original brief icon effects have been replaced with interactive illustrated scenes. Both are playable by clicking the artwork or the Replay animation button, using pointer, touch, Enter, or Space. Replaying changes only the artwork and does not record time or award trophies.
+
 ## Intended behavior
 
 Interpretation of the request: show feedback when a user stops a running timer while using the app, with a noticeably different celebration when that session earns a trophy. This is an in-app popup, not an operating-system notification or an animation on every app launch.
@@ -12,15 +14,18 @@ These are proposed product choices, not existing behavior:
 
 | Detail | Timer stopped | Trophy earned |
 | --- | --- | --- |
-| Visual | Compact white card, blue/green accent, timer/check icon | Larger gold-accented card, prominent trophy, small decorative particle burst |
+| Visual | White card with a large green stopwatch scene | Gold-accented card with a large shaded trophy illustration |
 | Copy | “Timer stopped” / “Guitar · 25m recorded locally. Saving…”; change to “25m saved” after confirmation | “Trophy earned!” / “Guitar · Weekly target reached” plus saved session duration |
-| Entrance | Fade and rise approximately 12px over 200ms | Fade and scale from 0.92 to 1 over 320ms; trophy settles once over about 500ms |
-| Decoration | One brief check-icon emphasis | Approximately 12–20 CSS particles within the card, ending within 900ms |
-| Visible duration | 5 seconds after success | 7 seconds after success |
+| Entrance | Card fades/rises over 200ms; stopwatch hand sweeps and the progress ring fills | Card scales into view over 320ms; trophy rises, rocks, and settles over 3.2 seconds |
+| Decoration | Hands resolve into a drawn checkmark, followed by two success ripples; scene lasts about 3.2 seconds | Rotating light rays, a sparkle, and two waves of confetti (36 particles); effects finish within 3.7 seconds |
+| Interaction | Click/tap the stopwatch or Replay animation to restart the scene | Click/tap the trophy or Replay animation to restart the celebration |
+| Visible duration | 8 seconds after success; 12 seconds for admin previews | 10 seconds after success; 12 seconds for admin previews |
 | Exit | 150ms fade | 180ms fade |
-| Reduced motion | Static card, no translation or scale | Static gold card and trophy, no particles or bounce |
+| Reduced motion | Static stopwatch and checkmark | Static gold trophy, no particles or bounce |
 
 Timing values are starting points for visual testing, not research-mandated thresholds. Avoid sound, looping motion, flashing, full-screen confetti, and focus-stealing dialogs. Use seconds for sessions under one minute; do not display positive recorded time as “0m.”
+
+Animations play once and settle. Hover/focus pauses popup dismissal using the existing Radix behavior. Admin settings detect reduced motion and offer an explicit “Play full motion in previews” checkbox; this opt-in applies only to sample previews. Real timer and trophy events always honor the device setting. Saving/empty timer states show a static stopwatch without the success checkmark or replay action.
 
 ## Repository findings
 
@@ -82,6 +87,8 @@ The modules below implement the shared event and popup system.
 | `src/components/celebrations/TimerStoppedContent.tsx` | Timer icon, duration, pending/saved state, and compact layout. |
 | `src/components/celebrations/TrophyEarnedContent.tsx` | Trophy, period label, session summary, and grouped award count. |
 | `src/components/celebrations/TrophyBurst.tsx` | Small, finite, decorative CSS particle layer with no pointer interception. Could remain private to trophy content if sufficiently small. |
+| `src/components/celebrations/CelebrationScene.tsx` | Shared interactive stage with native SVG stopwatch/trophy artwork, finite animation sequences, and focus-preserving replay controls. |
+| `src/hooks/useReducedMotion.ts` | Observe the device setting and explain static previews in admin settings. |
 
 Keep event state transient in Zustand and separate from persisted Goal data. These content components use the shared toast shell, not independent portals or notification providers.
 
@@ -145,4 +152,5 @@ Validation commands: `npm run test:timers`, `npx tsx --test tests/practiceTime.t
 - Failed timer progress retains a recovery candidate in memory and a persistent authenticated-shell reminder. Only confirmation of a snapshot containing that recorded progress recovers its award. Auth-session generation checks discard late results after account changes.
 - Radix toast roots remount on meaningful status changes so its announcement text refreshes. Ordinary save confirmation skips the card entrance animation and preserves focus if the popup already held it. Keyboard focus after the final timer stop moves to the stable app shell.
 - Automated coverage includes the real admin Settings tab and both previews, pending/saved/error outcomes, recovery, manual awards, modal/hidden-tab deferral, Escape dismissal, 320px layout, reduced motion, and announcement text. Tests use isolated APIs and sample goals.
+- Interactive-scene coverage samples multiple animation frames to verify actual hand, ring, checkmark, trophy, and confetti movement. It exercises artwork clicks and keyboard replay, checks that goal data and remote write counts remain unchanged, and verifies the explicit reduced-motion preview override. Desktop and mobile screenshots were visually reviewed.
 - Browser automation checks the generated live-region content; a manual screen-reader review remains useful for delivery behavior on each supported platform. Cross-device exactly-once trophy delivery remains outside this implementation.

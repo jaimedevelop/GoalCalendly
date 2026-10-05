@@ -32,7 +32,8 @@ export function useCelebrations() {
         id: `celebration:${event.id}`, celebration: event,
         variant: event.kind === 'error' ? 'error' : 'success',
         type: event.kind === 'error' ? 'foreground' : 'background',
-        duration: event.saveState === 'saving' ? Infinity : event.kind === 'trophy' ? 7000 : 5000,
+        duration: event.saveState === 'saving' ? Infinity : event.source === 'preview' ? 12000
+          : event.kind === 'trophy' ? 10000 : event.kind === 'timer' ? 8000 : 5000,
         onDismiss: () => useStore.getState().dismissCelebration(event.id),
       });
     }

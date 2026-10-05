@@ -129,14 +129,45 @@ test('admin previews and real timer/manual outcomes share accessible, responsive
     assert.equal(await popup.getAttribute('data-animation'), 'timer');
     assert.equal(await popup.evaluate(element => getComputedStyle(element).animationName), 'timer-popup-in');
     await popup.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+    const timerFrames = await page.locator('.celebration-art').evaluate(element => {
+      const animations = element.getAnimations({ subtree: true });
+      const frame = time => {
+        animations.forEach(animation => { animation.pause(); animation.currentTime = time; });
+        return { hand: getComputedStyle(element.querySelector('.timer-hand')).transform,
+          ring: getComputedStyle(element.querySelector('.timer-progress')).strokeDashoffset,
+          check: getComputedStyle(element.querySelector('.timer-check')).strokeDashoffset };
+      };
+      return [frame(100), frame(1100), frame(2900)];
+    });
+    assert.notEqual(timerFrames[0].hand, timerFrames[1].hand, 'timer hand visibly sweeps');
+    assert.notEqual(timerFrames[0].ring, timerFrames[1].ring, 'progress ring fills over time');
+    assert.notEqual(timerFrames[0].check, timerFrames[2].check, 'checkmark draws after the timer stops');
     await page.screenshot({ path: join(screenshotDir, 'timer-desktop.png') });
+    await popup.getByRole('button', { name: 'Replay timer celebration' }).click();
+    assert.equal(await page.locator('.celebration-art').getAttribute('data-run'), '1');
+    await popup.getByRole('button', { name: 'Replay animation', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('.celebration-art').getAttribute('data-run'), '2');
     await page.getByRole('button', { name: 'Preview trophy animation' }).click();
     await page.getByText('Trophy earned!', { exact: true }).waitFor();
     assert.equal(await popup.getAttribute('data-animation'), 'trophy');
-    assert.equal(await page.locator('.trophy-particle').count(), 16);
+    assert.equal(await page.locator('.trophy-particle').count(), 36);
     assert.equal(await popup.evaluate(element => getComputedStyle(element).animationName), 'trophy-popup-in');
     await popup.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+    const trophyFrames = await page.locator('.celebration-art').evaluate(element => {
+      const animations = element.getAnimations({ subtree: true });
+      const frame = time => {
+        animations.forEach(animation => { animation.pause(); animation.currentTime = time; });
+        return { cup: getComputedStyle(element.querySelector('.trophy-cup')).transform,
+          particle: getComputedStyle(element.querySelector('.trophy-particle')).transform };
+      };
+      return [frame(100), frame(1600)];
+    });
+    assert.notEqual(trophyFrames[0].cup, trophyFrames[1].cup, 'trophy lifts and settles');
+    assert.notEqual(trophyFrames[0].particle, trophyFrames[1].particle, 'confetti visibly travels');
     await page.screenshot({ path: join(screenshotDir, 'trophy-desktop.png') });
+    await popup.getByRole('button', { name: 'Replay trophy celebration' }).click();
+    assert.equal(await page.locator('.celebration-art').getAttribute('data-run'), '1');
     assert.deepEqual(await page.evaluate(() => ({ goals: JSON.stringify(window.celebrationTest.getState().goals), writes: window.goalWrites })), before);
 
     await popup.getByRole('button', { name: 'Close' }).focus();
@@ -147,6 +178,14 @@ test('admin previews and real timer/manual outcomes share accessible, responsive
     await page.emulateMedia({ reducedMotion: 'reduce' });
     assert.equal(await popup.evaluate(element => getComputedStyle(element).animationName), 'none');
     assert.equal(await page.locator('.trophy-burst').evaluate(element => getComputedStyle(element).display), 'none');
+    assert.equal(await page.locator('.trophy-cup').evaluate(element => getComputedStyle(element).animationName), 'none');
+    await page.getByLabel('Play full motion in previews').check();
+    await page.getByRole('button', { name: 'Preview trophy animation' }).click();
+    await page.waitForFunction(() => document.querySelector('.celebration-popup')?.getAttribute('data-full-motion') === 'true');
+    assert.equal(await page.locator('.trophy-cup').evaluate(element => getComputedStyle(element).animationName), 'trophy-lift');
+    await page.getByLabel('Play full motion in previews').uncheck();
+    await page.getByRole('button', { name: 'Preview trophy animation' }).click();
+    await page.waitForFunction(() => document.querySelector('.celebration-popup')?.getAttribute('data-full-motion') === 'false');
     await page.setViewportSize({ width: 320, height: 720 });
     await page.evaluate(() => window.scrollTo(0, 0));
     const bounds = await popup.boundingBox();

@@ -21,18 +21,63 @@ input {
 .celebration-popup[data-animation='trophy'][data-state='open'] { animation: trophy-popup-in 320ms cubic-bezier(.16, 1, .3, 1) both; }
 .celebration-popup[data-animation='trophy'][data-state='closed'] { animation-duration: 180ms; }
 .celebration-popup[data-entrance='false'][data-state='open'] { animation: none; }
-.celebration-timer-icon { animation: timer-icon-in 280ms ease-out both; }
-.celebration-trophy-icon { animation: trophy-settle 500ms ease-out both; }
+.celebration-popup[data-celebration='timer'],
+.celebration-popup[data-celebration='trophy'] { padding: 24px 20px 20px; }
+
+.celebration-scene { margin-bottom: 16px; }
+.celebration-art-button {
+  display: block; width: 100%; height: 210px; position: relative;
+  border-radius: 18px; overflow: hidden; cursor: pointer; touch-action: manipulation;
+  background: radial-gradient(ellipse at 50% 45%, #d1fae5 0%, #ecfdf5 50%, #f8fafc 100%);
+}
+.celebration-scene-trophy .celebration-art-button {
+  background: radial-gradient(ellipse at 50% 40%, #fef3c7 0%, #fffbeb 55%, #fff7ed 100%);
+}
+.celebration-art-button:disabled { cursor: default; }
+.celebration-art-button:focus-visible, .celebration-replay:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.celebration-art { display: block; position: relative; width: 100%; height: 100%; transition: transform 180ms ease-out; }
+.celebration-art-button:not(:disabled):hover .celebration-art { transform: scale(1.035); }
+.celebration-art-button:not(:disabled):active .celebration-art { transform: scale(.96); }
+.celebration-halo {
+  position: absolute; width: 152px; height: 152px; top: 18px; left: calc(50% - 76px);
+  border-radius: 50%; background: #a7f3d0; opacity: .35;
+  animation: celebration-halo 2800ms ease-out both;
+}
+.celebration-scene-trophy .celebration-halo { background: #fde68a; }
+.timer-artwork, .trophy-artwork { position: absolute; width: 176px; height: 176px; top: 6px; left: calc(50% - 88px); }
+.timer-artwork { color: #059669; }
+.timer-track { stroke: #a7f3d0; stroke-width: 5; }
+.timer-progress { stroke: #059669; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 100; transform: rotate(-90deg); transform-origin: 100px 104px; }
+.timer-face { fill: white; stroke: #6ee7b7; stroke-width: 2; }
+.timer-tick { stroke: #94a3b8; stroke-width: 2; stroke-linecap: round; }
+.timer-hand { stroke: currentColor; stroke-width: 6; stroke-linecap: round; transform-origin: 100px 104px; }
+.timer-check { stroke: #059669; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; }
+.celebration-scene-timer[data-saved='true'] .timer-progress { animation: timer-ring-fill 1800ms ease-in-out both; }
+.celebration-scene-timer[data-saved='true'] .timer-hand { animation: timer-hand-sweep 1700ms cubic-bezier(.25, .1, .15, 1) both; }
+.celebration-scene-timer[data-saved='true'] .timer-hands { opacity: 0; animation: timer-hands-finish 1900ms ease-out both; }
+.celebration-scene-timer[data-saved='true'] .timer-check { animation: timer-check-draw 2700ms ease-out both; }
+.timer-ripple { position: absolute; top: 29px; left: calc(50% - 72px); width: 144px; height: 144px; border: 2px solid #34d399; border-radius: 50%; opacity: 0; }
+.celebration-scene[data-saved='true'] .timer-ripple { animation: timer-success-ripple 1100ms 1700ms ease-out both; }
+.celebration-scene[data-saved='true'] .timer-ripple-two { animation-delay: 2050ms; }
+.celebration-art-label { position: absolute; bottom: 10px; left: 0; right: 0; color: #047857; font-size: 10px; letter-spacing: .2em; font-weight: 800; animation: celebration-caption 3000ms ease-out both; }
+.celebration-scene-trophy .celebration-art-label { color: #92400e; }
+.celebration-replay { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #047857; background: #ecfdf5; }
+.celebration-replay:hover { background: #d1fae5; }
+.celebration-scene-trophy .celebration-replay { color: #92400e; background: #fef3c7; }
+.celebration-scene-trophy .celebration-replay:hover { background: #fde68a; }
+.trophy-cup { transform-origin: 100px 170px; animation: trophy-lift 3200ms cubic-bezier(.22, 1, .36, 1) both; }
+.trophy-glint { transform-origin: 137px 47px; animation: trophy-shine 1500ms 700ms ease-in-out 2 both; }
+.trophy-rays { position: absolute; width: 230px; height: 230px; left: calc(50% - 115px); top: -20px; border-radius: 50%; opacity: 0; background: repeating-conic-gradient(from 0deg, #fbbf24 0deg 8deg, transparent 8deg 30deg); mask-image: radial-gradient(circle, transparent 22%, black 35%, transparent 70%); animation: trophy-rays-turn 3400ms ease-out both; }
 
 .trophy-particle {
   position: absolute;
-  left: 25%;
-  top: 50%;
-  width: 5px;
-  height: 8px;
+  left: 50%;
+  top: 42%;
+  width: 6px;
+  height: 10px;
   border-radius: 2px;
   opacity: 0;
-  animation: trophy-particle-burst 760ms ease-out both;
+  animation: trophy-particle-burst 1700ms ease-out both;
 }
 
 .celebration-popup[data-swipe='move'] {
@@ -51,27 +96,38 @@ input {
   to { opacity: 1; transform: scale(1); }
 }
 @keyframes popup-out { to { opacity: 0; } }
-@keyframes timer-icon-in {
-  from { opacity: .4; transform: scale(.85); }
-  to { opacity: 1; transform: scale(1); }
+@keyframes celebration-halo { 0% { transform: scale(.5); opacity: 0; } 35% { transform: scale(1.12); opacity: .6; } 100% { transform: scale(1); opacity: .35; } }
+@keyframes timer-ring-fill { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@keyframes timer-hand-sweep { from { transform: rotate(-90deg); } to { transform: rotate(720deg); } }
+@keyframes timer-hands-finish { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes timer-check-draw { 0%, 65% { stroke-dashoffset: 100; opacity: 0; } 72% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 1; } }
+@keyframes timer-success-ripple { from { transform: scale(.8); opacity: .6; } to { transform: scale(1.5); opacity: 0; } }
+@keyframes celebration-caption { 0%, 60% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
+@keyframes trophy-lift {
+  0% { opacity: 0; transform: translateY(60px) scale(.55) rotate(-16deg); }
+  25% { opacity: 1; transform: translateY(-10px) scale(1.08) rotate(6deg); }
+  45% { transform: translateY(3px) scale(.98) rotate(-4deg); }
+  65% { transform: translateY(-4px) scale(1.03) rotate(2deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
 }
-@keyframes trophy-settle {
-  0% { transform: scale(.8) rotate(-8deg); }
-  60% { transform: scale(1.08) rotate(3deg); }
-  100% { transform: scale(1) rotate(0); }
-}
+@keyframes trophy-shine { 0%, 100% { opacity: 0; transform: scale(.3) rotate(0); } 50% { opacity: 1; transform: scale(1.3) rotate(90deg); } }
+@keyframes trophy-rays-turn { 0% { opacity: 0; transform: rotate(-25deg) scale(.7); } 30% { opacity: .4; } 100% { opacity: 0; transform: rotate(40deg) scale(1.1); } }
 @keyframes trophy-particle-burst {
   0% { opacity: 0; transform: translate(0, 0) scale(.5); }
-  15% { opacity: .9; }
-  100% { opacity: 0; transform: translate(var(--particle-x), var(--particle-y)) rotate(var(--particle-turn)); }
+  15%, 55% { opacity: 1; }
+  65% { transform: translate(var(--particle-x), var(--particle-y)) rotate(var(--particle-turn)); }
+  100% { opacity: 0; transform: translate(var(--particle-x), calc(var(--particle-y) + 60px)) rotate(var(--particle-turn)) scale(.5); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .celebration-popup,
-  .celebration-popup[data-state],
-  .celebration-popup[data-animation][data-state],
-  .celebration-popup[data-swipe],
-  .celebration-timer-icon,
-  .celebration-trophy-icon { animation: none; transition: none; }
-  .trophy-burst { display: none; }
+  .celebration-popup:not([data-full-motion='true']),
+  .celebration-popup:not([data-full-motion='true'])[data-state],
+  .celebration-popup:not([data-full-motion='true'])[data-animation][data-state],
+  .celebration-popup:not([data-full-motion='true'])[data-swipe],
+  .celebration-popup:not([data-full-motion='true']) .celebration-art,
+  .celebration-popup:not([data-full-motion='true']) .celebration-art * { animation: none !important; transition: none !important; }
+  .celebration-popup:not([data-full-motion='true']) .celebration-art { transform: none !important; }
+  .celebration-popup:not([data-full-motion='true']) .trophy-burst,
+  .celebration-popup:not([data-full-motion='true']) .trophy-rays,
+  .celebration-popup:not([data-full-motion='true']) .trophy-glint { display: none; }
 }

@@ -37,7 +37,8 @@ export function Toaster() {
         const entrance = previous.current?.id !== id || previous.current?.celebration?.kind !== celebration?.kind;
         return (
           <Toast key={`${id}:${celebration?.kind ?? 'default'}:${celebration?.saveState ?? ''}`} ref={popupRef}
-            {...props} animationVariant={animationVariant} data-celebration={celebration?.kind} data-popup-id={id} data-entrance={entrance}>
+            {...props} animationVariant={animationVariant} data-celebration={celebration?.kind} data-popup-id={id} data-entrance={entrance}
+            data-full-motion={celebration?.source === 'preview' && celebration.fullMotionPreview === true}>
             {celebration?.kind === 'timer' ? <TimerStoppedContent event={celebration} />
               : celebration?.kind === 'trophy' ? <TrophyEarnedContent event={celebration} />
               : celebration?.kind === 'error' ? <div className="min-w-0 space-y-2">
