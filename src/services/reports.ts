@@ -1,5 +1,6 @@
 import { addDays, endOfDay, endOfMonth, endOfWeek, format, getWeek, getWeekYear, parseISO, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
 import type { Goal } from '../types';
+import { activityHistory } from './activityHistory';
 
 export type ReportFrequency = 'daily' | 'weekly' | 'monthly';
 
@@ -16,13 +17,7 @@ export function buildReport(goals: Goal[], frequency: ReportFrequency, date: Dat
   const inRange = (day: string) => day >= first && day <= last;
   const practiceDays = new Set<string>();
   const rows = goals.map(goal => {
-    const days = { ...goal.activityDays };
-    // Merge legacy daily totals without counting the same hours twice.
-    Object.entries(goal.progressPeriods ?? {}).forEach(([key, period]) => {
-      if (!key.startsWith('daily:')) return;
-      const day = key.slice(6);
-      days[day] = { hours: Math.max(days[day]?.hours ?? 0, period.hours), trophies: Math.max(days[day]?.trophies ?? 0, Number(period.earned)) };
-    });
+    const days = activityHistory(goal);
     let hours = 0;
     let trophies = 0;
     Object.entries(days).forEach(([day, activity]) => {

@@ -1,5 +1,6 @@
 import { format, getWeek, getWeekYear, startOfWeek } from 'date-fns';
 import { Goal, LEVELS } from '../types';
+import { activityHistory } from './activityHistory';
 
 export function periodKey(goal: Goal, date: Date): string {
   const frequency = goal.settings.frequency;
@@ -49,7 +50,8 @@ export function practiceTimeUpdates(goal: Goal, date: Date, hours: number, now =
   ].sort((a, b) => a.year - b.year || a.weekNumber - b.weekNumber);
   const totalTimeSpent = goal.totalTimeSpent + hours;
   const day = format(date, 'yyyy-MM-dd');
-  const previousDay = goal.activityDays?.[day];
+  const activityDays = activityHistory(goal);
+  const previousDay = activityDays[day];
   // Daily goals may already have dated history from before activityDays existed.
   const dailyPeriod = goal.progressPeriods?.[`daily:${day}`];
   let currentLevel = goal.currentLevel;
@@ -58,7 +60,7 @@ export function practiceTimeUpdates(goal: Goal, date: Date, hours: number, now =
   });
   return {
     totalTimeSpent,
-    activityDays: { ...goal.activityDays, [day]: {
+    activityDays: { ...activityDays, [day]: {
       hours: Math.max(previousDay?.hours ?? 0, dailyPeriod?.hours ?? 0) + hours,
       trophies: Math.max(previousDay?.trophies ?? 0, Number(dailyPeriod?.earned ?? false)) + Number(earned && !alreadyEarned),
     } },

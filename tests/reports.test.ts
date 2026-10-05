@@ -6,6 +6,38 @@ import { practiceTimeUpdates } from '../src/services/practiceTime';
 import { DEFAULT_GOAL_SETTINGS, type Goal } from '../src/types';
 
 const day = new Date(2026, 9, 7, 12);
+
+test('October 4 weekly-only entries recover AI and house work hours in daily reports', () => {
+  const date = new Date(2026, 9, 4, 12);
+  const goals = [2, 4].map((hours, i) => ({
+    ...goal(), id: String(i), name: i ? 'House work' : 'Development Ai',
+    totalTimeSpent: hours + 10, practiceDays: ['2025-10-04', '2026-10-04'],
+    progressPeriods: { 'weekly:2026-10-04': { hours, earned: false } },
+    weeklyTrophies: [{ weekNumber: getWeek(date), year: getWeekYear(date), weeklyTimeSpent: hours, trophies: 0 }],
+  }));
+  const before = JSON.stringify(goals);
+  const report = buildReport(goals, 'daily', date);
+  assert.deepEqual(report.rows.map(row => row.hours), [2, 4]);
+  assert.equal(report.hours, 6);
+  assert.equal(report.incomplete, false);
+  assert.equal(buildReport(goals, 'weekly', date).hours, 6);
+  assert.equal(buildReport(goals, 'monthly', date).hours, 6);
+  assert.equal(JSON.stringify(goals), before);
+
+  const tomorrow = new Date(2026, 9, 5, 12);
+  const updated = goals.map(g => ({ ...g, ...practiceTimeUpdates(g, tomorrow, 1, tomorrow) }));
+  assert.equal(buildReport(updated, 'daily', date).hours, 6);
+  assert.equal(buildReport(updated, 'daily', tomorrow).hours, 2);
+  assert.equal(buildReport(updated, 'weekly', date).hours, 8);
+});
+
+test('weekly periods spanning multiple practice days are never assigned to one day', () => {
+  const g = { ...goal(), practiceDays: ['2026-10-04', '2026-10-05'],
+    progressPeriods: { 'weekly:2026-10-04': { hours: 6, earned: true } } };
+  const report = buildReport([g], 'daily', new Date(2026, 9, 4));
+  assert.equal(report.hours, 0);
+  assert.equal(report.incomplete, true);
+});
 function goal(): Goal {
   return { id: 'a', name: 'Reading', targetHours: 20, currentLevel: 1, startDate: '2026-01-01', totalTimeSpent: 0, weeklyTimeSpent: 0, weeklyGoal: 2, trophies: 0, medals: [], practiceDays: [], weeklyTrophies: [], settings: { ...DEFAULT_GOAL_SETTINGS, target: { type: 'hours', value: 2 } } };
 }
