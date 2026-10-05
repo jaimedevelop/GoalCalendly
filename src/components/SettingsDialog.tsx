@@ -1,5 +1,5 @@
 import { requestReminderPermission } from '../services/reminders';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Goal, GoalSettings, Resource } from '../types';
 import { Settings, Plus, Trash2, Book, Video, GraduationCap, Code } from 'lucide-react';
 

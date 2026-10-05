@@ -47,7 +47,7 @@ export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
         toast({
           title: "Could not complete goal",
           description: useStore.getState().lastGoalError ?? 'Please try again.',
-          variant: "destructive",
+          variant: "error",
         });
       }
       return;
@@ -62,7 +62,7 @@ export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
       toast({
         title: "Could not reopen goal",
         description: result.error?.message ?? 'You may be at your active goal limit.',
-        variant: "destructive",
+        variant: "error",
       });
     }
   };

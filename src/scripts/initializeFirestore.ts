@@ -1,6 +1,5 @@
 import { Goal } from '../types';
-import { saveToFirestore } from '../services/db';
-import { migrateFromJSONFile } from './migrateToFirestore';
+import { importGoals } from '../services/goals';
 
 // Function to initialize Firestore with sample data
 export async function initializeFirestore(jsonFilePath?: string): Promise<void> {
@@ -23,12 +22,12 @@ export async function initializeFirestore(jsonFilePath?: string): Promise<void> 
         
         console.log(`Found ${jsonData.goals.length} goals in JSON file. Importing...`);
         
-        const result = await migrateFromJSONFile(jsonData);
+        const result = await importGoals(jsonData.goals);
         
-        if (result.success) {
-          console.log(`Successfully imported ${result.migratedCount} goals to Firestore!`);
+        if (result.ok) {
+          console.log(`Successfully imported ${jsonData.goals.length} goals to Firestore!`);
         } else {
-          console.error('Import failed:', result.errors);
+          throw new Error(result.error?.message ?? 'Import failed');
         }
         
       } catch (error) {
@@ -107,12 +106,12 @@ export async function initializeFirestore(jsonFilePath?: string): Promise<void> 
       ];
       
       console.log('Creating sample goals...');
-      const success = await saveToFirestore(sampleGoals);
+      const result = await importGoals(sampleGoals);
       
-      if (success) {
+      if (result.ok) {
         console.log('Sample goals created successfully in Firestore!');
       } else {
-        throw new Error('Failed to create sample goals');
+        throw new Error(result.error?.message ?? 'Failed to create sample goals');
       }
     }
     
@@ -128,17 +127,17 @@ export async function initializeFirestore(jsonFilePath?: string): Promise<void> 
 export async function initializeFirestoreInBrowser(jsonData?: { goals: Goal[] }): Promise<{ success: boolean; message: string }> {
   try {
     if (jsonData) {
-      const result = await migrateFromJSONFile(jsonData);
+      const result = await importGoals(jsonData.goals);
       
-      if (result.success) {
+      if (result.ok) {
         return {
           success: true,
-          message: `Successfully imported ${result.migratedCount} goals to Firestore!`
+          message: `Successfully imported ${jsonData.goals.length} goals to Firestore!`
         };
       } else {
         return {
           success: false,
-          message: `Import failed: ${result.errors.join(', ')}`
+          message: `Import failed: ${result.error?.message ?? 'Unknown error'}`
         };
       }
     } else {

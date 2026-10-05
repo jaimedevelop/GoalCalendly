@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Goal } from '../types';
 import { CheckCircle2, Circle } from 'lucide-react';
 

@@ -60,9 +60,7 @@ export async function getGoalsCountByUser(): Promise<Record<string, number>> {
  * as of admin_subscriptions.md step 4 — this will always fail with a
  * permission-denied error against the deployed rules. Use
  * src/services/goals.ts (createGoal/importGoals/etc., backed by the
- * server-side mutateGoals transaction) instead. Kept only because
- * src/scripts/initializeFirestore.ts (a standalone dev seeding script,
- * already broken by an unrelated missing-module error) references it.
+ * server-side mutateGoals transaction) instead.
  */
 export async function saveToFirestore(goals: Goal[]): Promise<boolean> {
   try {

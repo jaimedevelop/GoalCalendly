@@ -1,4 +1,4 @@
-import React from 'react';
+import type { GoalSettings } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useStore } from '../store';
@@ -37,7 +37,7 @@ export function Settings() {
               </label>
               <select
                 value={defaultSettings.frequency}
-                onChange={(e) => updateDefaultSettings({ frequency: e.target.value })}
+                onChange={(e) => updateDefaultSettings({ frequency: e.target.value as GoalSettings['frequency'] })}
                 className="w-full p-2 border rounded-md"
               >
                 <option value="daily">Daily</option>
@@ -52,7 +52,7 @@ export function Settings() {
               </label>
               <select
                 value={defaultSettings.target.type}
-                onChange={(e) => updateDefaultSettings({ target: { ...defaultSettings.target, type: e.target.value } })}
+                onChange={(e) => updateDefaultSettings({ target: { ...defaultSettings.target, type: e.target.value as GoalSettings['target']['type'] } })}
                 className="w-full p-2 border rounded-md"
               >
                 <option value="hours">Hours</option>

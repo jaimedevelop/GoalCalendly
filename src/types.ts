@@ -95,6 +95,7 @@ export interface BillingCustomer {
 
 /** Owner-readable projection of BillingCustomer with no internal Stripe IDs. */
 export interface BillingSummary {
+  gracePeriodEndsAt?: string;
   status: BillingStatus;
   paidThroughDate?: string;
   cancelAtPeriodEnd: boolean;

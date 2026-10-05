@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { Timer, StopCircle, Bell } from 'lucide-react';
 import { timerNotificationService } from '../services/notifications';
@@ -62,7 +62,7 @@ export function ActiveTimer() {
     setNotificationPermission(permission);
     setShowNotificationPrompt(false);
 
-    if (permission === 'granted' && activeTimer.isRunning && activeGoal) {
+    if (permission === 'granted' && activeTimer.isRunning && activeGoal && activeTimer.startTime !== null) {
       timerNotificationService.showTimerNotification(activeGoal.name, activeTimer.startTime);
     }
   };
