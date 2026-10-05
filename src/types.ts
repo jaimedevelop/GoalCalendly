@@ -151,6 +151,7 @@ export interface Goal {
   lastTimerStartedAt?: number;
   weeklyTrophies: WeeklyTrophy[];
   progressPeriods?: Record<string, { hours: number; earned: boolean }>;
+  activityDays?: Record<string, { hours: number; trophies: number }>;
 }
 
 export interface WeeklyTrophy {

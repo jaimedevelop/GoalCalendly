@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Download, Upload, Share2, Settings, CheckSquare, Layout, Crown, Save } from 'lucide-react';
+import { Plus, Download, Upload, Share2, Settings, CheckSquare, Layout, Crown, Save, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { GoalCard } from '../components/GoalCard';
@@ -272,6 +272,14 @@ export function Goals() {
           >
             <CheckSquare className="w-5 h-5" />
             <span>Completed</span>
+          </button>
+          <button
+            onClick={() => navigate('/reports')}
+            className="flex items-center justify-center space-x-2 px-4 py-2 bg-yellow-400 text-gray-900 rounded-md hover:bg-yellow-500"
+            title="Activity Reports"
+          >
+            <BarChart3 className="w-5 h-5" />
+            <span>Reports</span>
           </button>
           <button
             onClick={() => navigate('/settings')}

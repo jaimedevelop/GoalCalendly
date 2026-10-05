@@ -48,12 +48,20 @@ export function practiceTimeUpdates(goal: Goal, date: Date, hours: number, now =
     { weekNumber, year, weeklyTimeSpent: weeklyHours, trophies: (previousWeek?.trophies ?? 0) + (earned && !alreadyEarned ? 1 : 0) },
   ].sort((a, b) => a.year - b.year || a.weekNumber - b.weekNumber);
   const totalTimeSpent = goal.totalTimeSpent + hours;
+  const day = format(date, 'yyyy-MM-dd');
+  const previousDay = goal.activityDays?.[day];
+  // Daily goals may already have dated history from before activityDays existed.
+  const dailyPeriod = goal.progressPeriods?.[`daily:${day}`];
   let currentLevel = goal.currentLevel;
   LEVELS.forEach((level, i) => {
     if (totalTimeSpent >= level.requiredHours) currentLevel = Math.max(currentLevel, i + 1);
   });
   return {
     totalTimeSpent,
+    activityDays: { ...goal.activityDays, [day]: {
+      hours: Math.max(previousDay?.hours ?? 0, dailyPeriod?.hours ?? 0) + hours,
+      trophies: Math.max(previousDay?.trophies ?? 0, Number(dailyPeriod?.earned ?? false)) + Number(earned && !alreadyEarned),
+    } },
     weeklyTimeSpent: weeklyTrophies.find(w => w.weekNumber === getWeek(now) && w.year === getWeekYear(now))?.weeklyTimeSpent ?? 0,
     practiceDays: [...new Set([...(goal.practiceDays || []), format(date, 'yyyy-MM-dd')])].sort(),
     progressPeriods: { ...goal.progressPeriods, [key]: { hours: periodHours, earned } },
