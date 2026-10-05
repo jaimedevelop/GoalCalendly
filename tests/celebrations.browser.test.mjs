@@ -165,7 +165,25 @@ test('admin previews and real timer/manual outcomes share accessible, responsive
     });
     assert.notEqual(trophyFrames[0].cup, trophyFrames[1].cup, 'trophy lifts and settles');
     assert.notEqual(trophyFrames[0].particle, trophyFrames[1].particle, 'confetti visibly travels');
+    const rotationFrames = await page.locator('.celebration-art').evaluate(element => {
+      const animations = element.getAnimations({ subtree: true });
+      return [350, 775, 1200, 3750].map(time => {
+        animations.forEach(animation => { animation.pause(); animation.currentTime = time; });
+        const handles = new DOMMatrix(getComputedStyle(element.querySelector('.trophy-handles')).transform);
+        return { width: handles.m11, depth: handles.m13,
+          renderedWidth: element.querySelector('.trophy-handles').getBoundingClientRect().width,
+          emblem: Number(getComputedStyle(element.querySelector('.trophy-emblem')).opacity) };
+      });
+    });
+    assert.ok(rotationFrames[0].width > .99, 'handles start facing forward');
+    assert.ok(Math.abs(rotationFrames[1].width) < .01 && Math.abs(rotationFrames[1].depth) > .99, 'handles turn edge-on in 3D');
+    assert.ok(rotationFrames[1].renderedWidth < rotationFrames[0].renderedWidth * .4,
+      `rendered handles narrow while the parent cup rocks: ${JSON.stringify(rotationFrames)}`);
+    assert.ok(rotationFrames[2].width < -.99 && rotationFrames[2].emblem === 0, 'back of cup hides the front emblem');
+    assert.ok(rotationFrames[3].width > .99 && rotationFrames[3].emblem === 1, 'two turns settle facing forward');
     await page.screenshot({ path: join(screenshotDir, 'trophy-desktop.png') });
+    await page.locator('.celebration-art').evaluate(element => element.getAnimations({ subtree: true }).forEach(animation => { animation.currentTime = 775; }));
+    await page.screenshot({ path: join(screenshotDir, 'trophy-turn-side.png') });
     await popup.getByRole('button', { name: 'Replay trophy celebration' }).click();
     assert.equal(await page.locator('.celebration-art').getAttribute('data-run'), '1');
     assert.deepEqual(await page.evaluate(() => ({ goals: JSON.stringify(window.celebrationTest.getState().goals), writes: window.goalWrites })), before);
@@ -179,6 +197,7 @@ test('admin previews and real timer/manual outcomes share accessible, responsive
     assert.equal(await popup.evaluate(element => getComputedStyle(element).animationName), 'none');
     assert.equal(await page.locator('.trophy-burst').evaluate(element => getComputedStyle(element).display), 'none');
     assert.equal(await page.locator('.trophy-cup').evaluate(element => getComputedStyle(element).animationName), 'none');
+    assert.equal(await page.locator('.trophy-handles').evaluate(element => getComputedStyle(element).animationName), 'none');
     await page.getByLabel('Play full motion in previews').check();
     await page.getByRole('button', { name: 'Preview trophy animation' }).click();
     await page.waitForFunction(() => document.querySelector('.celebration-popup')?.getAttribute('data-full-motion') === 'true');

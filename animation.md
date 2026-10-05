@@ -4,6 +4,8 @@ Research date: October 5, 2026. Status: implemented, including admin animation p
 
 Animation revision: the original brief icon effects have been replaced with interactive illustrated scenes. Both are playable by clicking the artwork or the Replay animation button, using pointer, touch, Enter, or Space. Replaying changes only the artwork and does not record time or award trophies.
 
+Trophy spin revision: the cup now completes two 3D-style turns over 3.75 seconds, including its entrance delay. Its handles rotate around the vertical axis while the star and reflection move around the bowl, disappearing on the back and returning at the front. An elliptical rim gives the cup depth; the rounded bowl keeps its volume instead of flipping like a flat card. Confetti and replay remain. The timer sequence is unchanged.
+
 ## Intended behavior
 
 Interpretation of the request: show feedback when a user stops a running timer while using the app, with a noticeably different celebration when that session earns a trophy. This is an in-app popup, not an operating-system notification or an animation on every app launch.
