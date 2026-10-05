@@ -16,7 +16,7 @@ export function useGoalReminders(uid?: string) {
       const normalized = state.goals.map(goal => normalizeProgress(goal, now));
       if (normalized.some((goal, i) => goal.weeklyTimeSpent !== state.goals[i].weeklyTimeSpent)) state.setGoals(normalized);
       const due = state.goals.filter(goal => {
-        if (!reminderDue(goal, now, state.activeTimer.goalId)) return false;
+        if (state.activeTimers.some(t => t.goalId === goal.id) || !reminderDue(goal, now, null)) return false;
         const key = reminderKey(uid, goal, now);
         if (delivered.has(key)) return false;
         try { if (localStorage.getItem(key)) return false; } catch { /* Session fallback. */ }

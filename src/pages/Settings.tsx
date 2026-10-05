@@ -1,11 +1,11 @@
 import type { GoalSettings } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { useStore } from '../store';
+import { useStore, MAX_ACTIVE_TIMERS_LIMIT } from '../store';
 
 export function Settings() {
   const navigate = useNavigate();
-  const { defaultSettings, updateDefaultSettings } = useStore();
+  const { defaultSettings, updateDefaultSettings, maxActiveTimers, setMaxActiveTimers } = useStore();
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
@@ -77,6 +77,23 @@ export function Settings() {
                 className="w-full p-2 border rounded-md"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold">Timers</h3>
+            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="max-active-timers">
+              Timers that can run at once
+            </label>
+            <input
+              id="max-active-timers"
+              type="number"
+              value={maxActiveTimers}
+              onChange={(e) => setMaxActiveTimers(parseInt(e.target.value))}
+              min="1"
+              max={MAX_ACTIVE_TIMERS_LIMIT}
+              className="w-full p-2 border rounded-md"
+            />
+            <p className="text-gray-600 text-sm">Between 1 and {MAX_ACTIVE_TIMERS_LIMIT}. Saved on this device.</p>
           </div>
 
           <div className="space-y-2">

@@ -22,14 +22,15 @@ export function Goals() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const { saveGoals, lastGoalError } = useStore();
   const [viewType, setViewType] = useState<ViewType>('top');
-  const { goals, setGoals, defaultSettings, user, activeTimer } = useStore();
+  const { goals, setGoals, defaultSettings, user, activeTimer, activeTimers } = useStore();
   const activeGoals = goals
     .filter(g => !g.completed)
     .sort((a, b) => {
-      if (activeTimer.isRunning && activeTimer.goalId) {
-        if (a.id === activeTimer.goalId) return -1;
-        if (b.id === activeTimer.goalId) return 1;
-      }
+      // Running timers first, most recently started on top (lastTimerStartedAt
+      // is set to the start time while running and to the stop time afterwards).
+      const aRunning = activeTimers.some(t => t.goalId === a.id);
+      const bRunning = activeTimers.some(t => t.goalId === b.id);
+      if (aRunning !== bRunning) return aRunning ? -1 : 1;
       return (b.lastTimerStartedAt ?? 0) - (a.lastTimerStartedAt ?? 0);
     });
   const importFileRef = useRef<HTMLInputElement>(null);

@@ -7,7 +7,13 @@ import { createGoal, updateGoalFields, completeGoal, deleteGoalRemote, saveGoalS
 
 interface Store {
   goals: Goal[];
+  /** Most recently started timer (or idle state); kept for single-timer consumers. */
   activeTimer: { goalId: string | null } & Timer;
+  /** All running timers, most recently started first (capped by maxActiveTimers). */
+  activeTimers: ({ goalId: string } & Timer)[];
+  /** User preference: how many timers may run at once. Stored per device. */
+  maxActiveTimers: number;
+  setMaxActiveTimers: (max: number) => void;
   defaultSettings: GoalSettings;
   user: AuthUser | null;
   isAuthLoading: boolean;
@@ -31,7 +37,7 @@ interface Store {
   completeGoalById: (goalId: string) => Promise<boolean>;
   deleteGoal: (goalId: string) => Promise<boolean>;
   startTimer: (goalId: string) => void;
-  stopTimer: () => void;
+  stopTimer: (goalId?: string) => void;
   addManualTime: (goalId: string, date: Date, minutes: number) => Promise<boolean>;
   resetTimer: () => void;
   setGoals: (goals: Goal[]) => void;
@@ -49,6 +55,30 @@ interface Store {
  * state and admins never show ads, matching the effective-access policy in
  * functions/src/lib/entitlements.ts.
  */
+export const DEFAULT_MAX_ACTIVE_TIMERS = 3;
+export const MAX_ACTIVE_TIMERS_LIMIT = 20;
+const MAX_TIMERS_KEY = 'max-active-timers';
+
+function clampMaxTimers(value: number) {
+  return Number.isFinite(value)
+    ? Math.min(MAX_ACTIVE_TIMERS_LIMIT, Math.max(1, Math.floor(value)))
+    : DEFAULT_MAX_ACTIVE_TIMERS;
+}
+
+function loadMaxTimers() {
+  try {
+    const stored = localStorage.getItem(MAX_TIMERS_KEY);
+    return stored === null ? DEFAULT_MAX_ACTIVE_TIMERS : clampMaxTimers(Number(stored));
+  } catch {
+    return DEFAULT_MAX_ACTIVE_TIMERS;
+  }
+}
+const IDLE_TIMER = { goalId: null, isRunning: false, startTime: null, elapsedTime: 0 } as const;
+
+function withTimers(timers: ({ goalId: string } & Timer)[]) {
+  return { activeTimers: timers, activeTimer: timers[0] ?? { ...IDLE_TIMER } };
+}
+
 export function shouldShowAds(entitlement: Entitlement | null, isLoading: boolean): boolean {
   if (isLoading || !entitlement) return false;
   return entitlement.hasAdvertising;
@@ -56,11 +86,13 @@ export function shouldShowAds(entitlement: Entitlement | null, isLoading: boolea
 
 export const useStore = create<Store>((set, get) => ({
   goals: [],
-  activeTimer: {
-    goalId: null,
-    isRunning: false,
-    startTime: null,
-    elapsedTime: 0,
+  activeTimer: { ...IDLE_TIMER },
+  activeTimers: [],
+  maxActiveTimers: loadMaxTimers(),
+  setMaxActiveTimers: (max) => {
+    const value = clampMaxTimers(max);
+    try { localStorage.setItem(MAX_TIMERS_KEY, String(value)); } catch { /* Preference stays in memory. */ }
+    set({ maxActiveTimers: value });
   },
   defaultSettings: DEFAULT_GOAL_SETTINGS,
   user: null,
@@ -134,13 +166,11 @@ export const useStore = create<Store>((set, get) => ({
     const state = get();
     const previous = state.goals.find((g) => g.id === goalId);
     if (!previous) return false;
-    const previousTimer = state.activeTimer;
+    const previousTimers = state.activeTimers;
 
     set((s) => ({
       goals: s.goals.filter((goal) => goal.id !== goalId),
-      activeTimer: s.activeTimer.goalId === goalId
-        ? { goalId: null, isRunning: false, startTime: null, elapsedTime: 0 }
-        : s.activeTimer,
+      ...withTimers(s.activeTimers.filter(t => t.goalId !== goalId)),
       lastGoalError: null,
     }));
 
@@ -148,7 +178,7 @@ export const useStore = create<Store>((set, get) => ({
     if (!result.ok) {
       set((s) => ({
         goals: [...s.goals, previous],
-        activeTimer: previousTimer,
+        ...withTimers(previousTimers),
         lastGoalError: result.error?.message ?? 'Could not delete this goal.',
       }));
       return false;
@@ -158,37 +188,37 @@ export const useStore = create<Store>((set, get) => ({
   startTimer: (goalId) =>
     set((state) => {
       if (!state.goals.some(goal => goal.id === goalId && !goal.completed)) return state;
+      if (state.activeTimers.some(t => t.goalId === goalId)) return state;
+      if (state.activeTimers.length >= state.maxActiveTimers) {
+        return { lastGoalError: `You can run up to ${state.maxActiveTimers} timers at once. Stop one first or raise the limit in Settings.` };
+      }
       const startTime = Date.now();
       const goals = state.goals.map(goal =>
         goal.id === goalId ? { ...goal, lastTimerStartedAt: startTime } : goal
       );
-      // lastTimerStartedAt is a low-stakes UX field (resumes an in-progress
-      // timer after a refresh); persisted best-effort via updateGoal rather
-      // than blocking timer start on a round trip.
+      // lastTimerStartedAt is a low-stakes UX field (goal ordering); persisted
+      // best-effort via updateGoal rather than blocking timer start on a round trip.
       void updateGoalFields(goalId, { lastTimerStartedAt: startTime }).then(result => {
         if (!result.ok) set({ lastGoalError: result.error?.message ?? 'Could not save the timer start. Use Save to retry.' });
       });
       return {
         goals,
-        activeTimer: {
-          goalId,
-          isRunning: true,
-          startTime,
-          elapsedTime: 0,
-        },
+        ...withTimers([{ goalId, isRunning: true, startTime, elapsedTime: 0 }, ...state.activeTimers]),
       };
     }),
-  stopTimer: () => {
-    const { activeTimer, goals } = get();
-    if (!activeTimer.goalId || !activeTimer.startTime) return;
+  stopTimer: (goalId) => {
+    const { activeTimers, goals } = get();
+    const timer = goalId ? activeTimers.find(t => t.goalId === goalId) : activeTimers[0];
+    if (!timer || !timer.startTime) return;
 
     const stoppedAt = Date.now();
-    const goal = goals.find((g) => g.id === activeTimer.goalId);
+    const goal = goals.find((g) => g.id === timer.goalId);
     if (!goal) return;
 
     let updatedGoal = goal;
-    let timerUpdates: Partial<Goal> = { lastTimerStartedAt: 0 };
-    let cursor = activeTimer.startTime;
+    // Stopping marks the goal as last worked on "now" so it stays at the top.
+    let timerUpdates: Partial<Goal> = { lastTimerStartedAt: stoppedAt };
+    let cursor = timer.startTime;
     while (cursor < stoppedAt) {
       const end = Math.min(addDays(startOfDay(new Date(cursor)), 1).getTime(), stoppedAt);
       const progress = practiceTimeUpdates(updatedGoal, new Date(cursor), (end - cursor) / 3600000, new Date(stoppedAt));
@@ -199,12 +229,7 @@ export const useStore = create<Store>((set, get) => ({
 
     set((state) => ({
       goals: state.goals.map((g) => (g.id === goal.id ? { ...g, ...timerUpdates } : g)),
-      activeTimer: {
-        goalId: null,
-        isRunning: false,
-        startTime: null,
-        elapsedTime: 0,
-      },
+      ...withTimers(state.activeTimers.filter(t => t.goalId !== goal.id)),
     }));
 
     // Timer progress never increases the active-goal count, so this is safe
@@ -222,15 +247,7 @@ export const useStore = create<Store>((set, get) => ({
     }
     return get().updateGoal(goalId, practiceTimeUpdates(goal, date, minutes / 60));
   },
-  resetTimer: () =>
-    set({
-      activeTimer: {
-        goalId: null,
-        isRunning: false,
-        startTime: null,
-        elapsedTime: 0,
-      },
-    }),
+  resetTimer: () => set(withTimers([])),
   // Local-state-only: recomputes trophies for display and replaces the
   // in-memory goal list. This NEVER writes to the server — it is used to
   // apply a freshly loaded/server-confirmed goal list. Any flow that means
@@ -273,12 +290,7 @@ export const useStore = create<Store>((set, get) => ({
     // Reset store to initial state
     set({
       goals: [],
-      activeTimer: {
-        goalId: null,
-        isRunning: false,
-        startTime: null,
-        elapsedTime: 0,
-      },
+      ...withTimers([]),
       defaultSettings: DEFAULT_GOAL_SETTINGS,
       entitlement: null,
       isEntitlementLoading: true,

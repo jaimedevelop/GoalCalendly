@@ -16,13 +16,13 @@ interface GoalCardProps {
 }
 
 export function GoalCard({ goal, viewType = 'top' }: GoalCardProps) {
-  const { startTimer, activeTimer, updateGoal, deleteGoal, completeGoalById, setGoals, goals } = useStore();
+  const { startTimer, activeTimers, updateGoal, deleteGoal, completeGoalById, setGoals, goals } = useStore();
   const [showSettings, setShowSettings] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(goal.name);
   const progress = currentProgress(goal);
   const target = goal.settings.target;
-  const isActive = activeTimer.goalId === goal.id;
+  const isActive = activeTimers.some(t => t.goalId === goal.id);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [manualDate, setManualDate] = useState<Date | null>(null);
   const { toast } = useToast();
