@@ -111,3 +111,119 @@ test('reminders respect time, opt-in, completion, active timer and achieved targ
   assert.notEqual(reminderKey('a', g, now), reminderKey('b', g, now));
   assert.notEqual(reminderKey('a', g, now), reminderKey('a', g, new Date(2026, 9, 8)));
 });
+
+test('loading legacy awards preserves them across target changes and does not invent awards', () => {
+  const legacy = { ...fresh('weekly', 10), trophies: 1,
+    weeklyTrophies: [{ weekNumber: getWeek(now), year: getWeekYear(now), weeklyTimeSpent: 5, trophies: 1 }] };
+  assert.equal(normalizeProgress(legacy, now).trophies, 1);
+  assert.equal(add(legacy, 10).trophies, 1);
+  const unearned = { ...legacy, trophies: 0, settings: { ...legacy.settings, target: { type: 'hours' as const, value: 2 } },
+    weeklyTrophies: [{ ...legacy.weeklyTrophies[0], trophies: 0 }] };
+  assert.equal(normalizeProgress(unearned, now).trophies, 0, 'loading never applies the new target retroactively');
+  assert.equal(add(unearned, 0.5).trophies, 1);
+});
+
+test('legacy daily counts and lifetime awards without dates survive reload and new practice', () => {
+  const legacy = { ...fresh('daily', 1), trophies: 5,
+    weeklyTrophies: [{ weekNumber: getWeek(now), year: getWeekYear(now), weeklyTimeSpent: 3, trophies: 3 }] };
+  const loaded = normalizeProgress(legacy, now);
+  assert.equal(loaded.weeklyTrophies[0].trophies, 3);
+  assert.equal(loaded.trophies, 5);
+  assert.equal(add(loaded, 1).trophies, 6);
+});
+
+test('period-only weekly history rebuilds summaries and retains hours after another session', () => {
+  const legacy = { ...fresh('weekly', 5), totalTimeSpent: 5,
+    progressPeriods: { 'weekly:2026-10-04': { hours: 5, earned: true } } };
+  const original = JSON.stringify(legacy);
+  const loaded = normalizeProgress(legacy, now);
+  assert.equal(loaded.trophies, 1);
+  assert.equal(loaded.weeklyTimeSpent, 5);
+  assert.equal(add(loaded, 1).weeklyTimeSpent, 6);
+  assert.equal(add(loaded, 1).trophies, 1);
+  assert.deepEqual(normalizeProgress(loaded, now), loaded);
+  assert.equal(JSON.stringify(legacy), original);
+});
+
+test('daily and activity history recover missing weekly summaries without counting overlaps twice', () => {
+  const legacy = { ...fresh('daily', 1),
+    progressPeriods: { 'daily:2026-10-06': { hours: 2, earned: true }, 'daily:2026-10-07': { hours: 1, earned: true } },
+    activityDays: { '2026-10-06': { hours: 2, trophies: 1 }, '2026-10-07': { hours: 1, trophies: 1 } } };
+  const loaded = normalizeProgress(legacy, now);
+  assert.equal(loaded.trophies, 2);
+  assert.equal(loaded.weeklyTimeSpent, 3);
+  assert.equal(add(loaded, 1).trophies, 2);
+  assert.equal(add(loaded, 1).weeklyTimeSpent, 4);
+});
+
+test('undated monthly trophies survive without inventing a week or duplicating a saved summary', () => {
+  const legacy = { ...fresh('monthly', 5), progressPeriods: { 'monthly:2026-10': { hours: 5, earned: true } } };
+  const loaded = normalizeProgress(legacy, now);
+  assert.equal(loaded.trophies, 1);
+  assert.equal(loaded.weeklyTrophies.length, 0);
+  assert.equal(add(loaded, 1).trophies, 1);
+  const summary = { weekNumber: getWeek(now), year: getWeekYear(now), weeklyTimeSpent: 5, trophies: 1 };
+  assert.equal(normalizeProgress({ ...legacy, weeklyTrophies: [summary] }, now).trophies, 1);
+  const older = { ...summary, weekNumber: getWeek(new Date(2026, 8, 7)) };
+  assert.equal(normalizeProgress({ ...legacy, weeklyTrophies: [older] }, now).trophies, 2);
+});
+
+test('distinct daily and monthly periods both survive when only daily summaries remain', () => {
+  const legacy = { ...fresh('monthly', 5),
+    progressPeriods: { 'daily:2026-10-07': { hours: 1, earned: true }, 'monthly:2026-10': { hours: 5, earned: true } },
+    activityDays: { '2026-10-07': { hours: 1, trophies: 1 } } };
+  assert.equal(normalizeProgress(legacy, now).trophies, 2);
+});
+
+test('monthly award dates restore the correct week after summaries are missing', () => {
+  let g = add(fresh('monthly', 5), 3, new Date(2026, 9, 1));
+  g = add(g, 2, new Date(2026, 9, 15));
+  assert.equal(g.progressPeriods?.['monthly:2026-10'].earnedOn, '2026-10-15');
+  const recovered = normalizeProgress({ ...g, trophies: 0, weeklyTrophies: [], activityDays: {} }, new Date(2026, 9, 15));
+  assert.equal(recovered.trophies, 1);
+  assert.equal(recovered.weeklyTrophies.find(w => w.weekNumber === getWeek(new Date(2026, 9, 15)))?.trophies, 1);
+});
+
+test('changing daily to weekly awards the distinct weekly period and preserves all week hours', () => {
+  let g = add(fresh('daily', 1), 1);
+  g = { ...g, settings: { ...g.settings, frequency: 'weekly', target: { type: 'hours', value: 2 } } };
+  g = add(g, 1);
+  assert.equal(g.trophies, 2);
+  assert.equal(g.weeklyTrophies[0].trophies, 2);
+  assert.equal(g.progressPeriods?.['weekly:2026-10-04'].earned, true);
+  assert.equal(normalizeProgress(g, now).trophies, 2);
+});
+
+test('switching frequency back and forth retains period hours without re-awarding completed periods', () => {
+  let g = add(fresh('weekly', 5), 2);
+  g = { ...g, settings: { ...g.settings, frequency: 'daily' } };
+  assert.equal(currentProgress(g, now), 2);
+  g = add(g, 2);
+  g = { ...g, settings: { ...g.settings, frequency: 'weekly' } };
+  assert.equal(currentProgress(g, now), 4);
+  g = add(g, 1);
+  assert.equal(g.trophies, 1);
+  assert.equal(currentProgress(g, now), 5);
+  assert.equal(add(g, 5).trophies, 1);
+});
+
+test('duplicate weekly snapshots do not duplicate trophies or lose the larger hour total', () => {
+  const summary = { weekNumber: getWeek(now), year: getWeekYear(now), weeklyTimeSpent: 2, trophies: 1 };
+  const g = { ...fresh('weekly', 1), weeklyTrophies: [summary, { ...summary, weeklyTimeSpent: 3 }] };
+  const loaded = normalizeProgress(g, now);
+  assert.equal(loaded.weeklyTrophies.length, 1);
+  assert.equal(loaded.weeklyTimeSpent, 3);
+  assert.equal(loaded.trophies, 1);
+  assert.equal(add(loaded, 1).weeklyTimeSpent, 4);
+});
+
+test('Sunday starts a new award period, including week 53 and the next week-year', () => {
+  const saturday = new Date(2022, 11, 31, 23, 30);
+  const sunday = new Date(2023, 0, 1, 0, 30);
+  let g = add(fresh('weekly', 1), 1, saturday);
+  assert.deepEqual(g.weeklyTrophies.map(w => [w.weekNumber, w.year]), [[53, 2022]]);
+  assert.equal(currentProgress(g, sunday), 0);
+  g = add(g, 1, sunday);
+  assert.equal(g.trophies, 2);
+  assert.deepEqual(g.weeklyTrophies.map(w => [w.weekNumber, w.year]), [[53, 2022], [1, 2023]]);
+});

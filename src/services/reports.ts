@@ -1,6 +1,7 @@
 import { addDays, endOfDay, endOfMonth, endOfWeek, format, getWeek, getWeekYear, parseISO, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
 import type { Goal } from '../types';
 import { activityHistory } from './activityHistory';
+import { normalizeProgress } from './practiceTime';
 
 export type ReportFrequency = 'daily' | 'weekly' | 'monthly';
 
@@ -16,7 +17,8 @@ export function buildReport(goals: Goal[], frequency: ReportFrequency, date: Dat
   const last = format(end, 'yyyy-MM-dd');
   const inRange = (day: string) => day >= first && day <= last;
   const practiceDays = new Set<string>();
-  const rows = goals.map(goal => {
+  const rows = goals.map(savedGoal => {
+    const goal = normalizeProgress(savedGoal, date);
     const days = activityHistory(goal);
     let hours = 0;
     let trophies = 0;
@@ -59,6 +61,29 @@ export function buildReport(goals: Goal[], frequency: ReportFrequency, date: Dat
     if (frequency === 'monthly' && month) {
       hours = Math.max(hours, month.hours);
       trophies = Math.max(trophies, Number(month.earned));
+    }
+    if (frequency === 'monthly') {
+      const periodAwards = Object.entries(goal.progressPeriods ?? {}).filter(([key, period]) => {
+        if (!period.earned) return false;
+        if (key.startsWith('monthly:')) return key.slice(8) === first.slice(0, 7);
+        if (key.startsWith('daily:')) return inRange(key.slice(6));
+        if (period.earnedOn) return inRange(period.earnedOn);
+        if (!key.startsWith('weekly:')) return false;
+        const weekStart = parseISO(key.slice(7));
+        return weekStart >= start && endOfWeek(weekStart) <= end;
+      }).length;
+      trophies = Math.max(trophies, periodAwards);
+    } else {
+      // Monthly totals cannot locate missing activity within a particular day/week.
+      for (const [key, period] of Object.entries(goal.progressPeriods ?? {})) {
+        if (!key.startsWith('monthly:')) continue;
+        const stamp = key.slice(8);
+        if (stamp < first.slice(0, 7) || stamp > last.slice(0, 7)) continue;
+        const dated = Object.entries(days).filter(([day]) => day.startsWith(stamp));
+        const datedHours = dated.reduce((sum, [, activity]) => sum + activity.hours, 0);
+        const datedTrophies = dated.reduce((sum, [, activity]) => sum + activity.trophies, 0);
+        if (period.hours > datedHours + 1e-9 || (period.earned && !period.earnedOn && datedTrophies === 0)) incomplete = true;
+      }
     }
     const goalDays = new Set((goal.practiceDays ?? []).filter(inRange));
     Object.entries(days).forEach(([day, activity]) => { if (inRange(day) && activity.hours > 0) goalDays.add(day); });

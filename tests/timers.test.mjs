@@ -24,6 +24,7 @@ function setup(overrides = {}, storage = new Map()) {
     ...overrides,
   };
   const cache = new Map();
+  let checkReminders = () => {};
   function load(file) {
     let path = resolve(file);
     if (!existsSync(path) || !statSync(path).isFile()) path = path.replace(/\.js$/, '') + '.ts';
@@ -35,11 +36,14 @@ function setup(overrides = {}, storage = new Map()) {
     }).outputText;
     runInNewContext(code, {
       exports, Date: Clock, console,
+      window: { setInterval: callback => { checkReminders = callback; return 1; }, addEventListener() {}, removeEventListener() {} },
+      clearInterval() {},
       localStorage: {
         getItem: key => storage.get(key) ?? null,
         setItem: (key, value) => storage.set(key, value),
       },
-      require: name => name === './services/goals.js' ? api
+      require: name => name === 'react' ? { ...require('react'), useEffect: callback => { callback(); } }
+        : name === './services/goals.js' ? api
         : name.startsWith('.') ? load(resolve(dirname(path), name)) : require(name),
     }, { filename: path });
     return exports;
@@ -56,6 +60,8 @@ function setup(overrides = {}, storage = new Map()) {
   return {
     store: useStore, writes, storage, advance: ms => { now += ms; },
     setTime: value => { now = value; },
+    startReminderChecks: () => load('src/hooks/useGoalReminders.ts').useGoalReminders('audit'),
+    checkReminders: () => checkReminders(),
     running: () => Array.from(useStore.getState().activeTimers, t => t.goalId),
     ordered: () => Array.from(sortActiveGoals(useStore.getState().goals, useStore.getState().activeTimers), g => g.id),
   };
@@ -159,6 +165,53 @@ function target(h, frequency = 'weekly', value = 1) {
     settings: { ...g.settings, frequency, target: { type: 'hours', value } },
   })) }));
 }
+
+test('timer crossing Sunday at New Year awards week 53 and week 1 separately', async () => {
+  const h = setup();
+  target(h, 'weekly', 0.5);
+  h.setTime(new Date(2022, 11, 31, 23).getTime());
+  h.store.getState().startTimer('a');
+  h.setTime(new Date(2023, 0, 1, 1).getTime());
+  await h.store.getState().stopTimer('a');
+  const g = h.store.getState().goals[0];
+  assert.equal(g.totalTimeSpent, 2);
+  assert.equal(g.trophies, 2);
+  assert.deepEqual(Array.from(g.weeklyTrophies, w => [w.year, w.weekNumber, w.weeklyTimeSpent, w.trophies]),
+    [[2022, 53, 1, 1], [2023, 1, 1, 1]]);
+  assert.equal(h.store.getState().celebrations[0].periodKeys.length, 2);
+});
+
+test('timer on the daylight-saving transition records elapsed time rather than wall-clock hours', async () => {
+  const h = setup();
+  target(h, 'weekly', 1);
+  const start = new Date(2026, 2, 8, 0).getTime();
+  const end = new Date(2026, 2, 8, 4).getTime();
+  h.setTime(start);
+  h.store.getState().startTimer('a');
+  h.setTime(end);
+  await h.store.getState().stopTimer('a');
+  const g = h.store.getState().goals[0];
+  assert.equal(g.totalTimeSpent, (end - start) / 3600000);
+  assert.equal(g.weeklyTimeSpent, (end - start) / 3600000);
+  assert.equal(g.trophies, 1);
+});
+
+test('an open app refreshes date-dependent progress at midnight even when weekly hours stay the same', () => {
+  const h = setup();
+  h.store.setState({ user: { uid: 'audit' } });
+  h.setTime(new Date(2026, 9, 10, 23, 59).getTime());
+  h.startReminderChecks();
+  let refreshes = 0;
+  const unsubscribe = h.store.subscribe(() => { refreshes++; });
+  h.checkReminders();
+  assert.equal(refreshes, 0);
+  h.advance(2 * 60000);
+  h.checkReminders();
+  assert.equal(refreshes, 1, 'Sunday labels refresh even with no hours in either week');
+  h.checkReminders();
+  assert.equal(refreshes, 1, 'ordinary checks do not repeatedly render unchanged progress');
+  unsubscribe();
+});
 
 test('timer feedback stays pending until saved, then promotes to one trophy', async () => {
   let finish;

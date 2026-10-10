@@ -26,8 +26,20 @@ export function activityHistory(goal: Goal): NonNullable<Goal['activityDays']> {
     const [day] = candidates;
     days[day] = {
       hours: Math.max(days[day]?.hours ?? 0, period.hours),
-      trophies: Math.max(days[day]?.trophies ?? 0, Number(period.earned)),
+      trophies: Math.max(days[day]?.trophies ?? 0, Number(period.earned && !period.earnedOn)),
     };
+  }
+  // New awards carry their actual practice date, including monthly awards.
+  // Sum distinct periods, then reconcile with the overlapping daily summary.
+  const awards: Record<string, number> = {};
+  for (const [key, period] of Object.entries(goal.progressPeriods ?? {})) {
+    if (!period.earned) continue;
+    const day = key.startsWith('daily:') ? key.slice(6) : period.earnedOn;
+    if (!day || !isValid(parseISO(day))) continue;
+    awards[day] = (awards[day] ?? 0) + 1;
+  }
+  for (const [day, trophies] of Object.entries(awards)) {
+    days[day] = { hours: days[day]?.hours ?? 0, trophies: Math.max(days[day]?.trophies ?? 0, trophies) };
   }
   return days;
 }
