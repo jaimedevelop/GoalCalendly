@@ -84,7 +84,7 @@ test('monthly reports include whole legacy weeks but do not assign boundary week
   ] };
   const report = buildReport([g], 'monthly', day);
   assert.equal(report.hours, 7);
-  assert.equal(report.trophies, 1);
+  assert.equal(report.trophies, 3);
   assert.equal(report.incomplete, true);
 });
 

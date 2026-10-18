@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { getWeek, getWeekYear } from 'date-fns';
 import { DEFAULT_GOAL_SETTINGS, type Goal } from '../src/types';
 import { newlyEarnedPeriods, containsSessionProgress, formatSessionDuration } from '../src/services/celebrations';
-import { practiceTimeUpdates } from '../src/services/practiceTime';
+import { normalizeProgress, practiceTimeUpdates } from '../src/services/practiceTime';
 import { reducer, clearToasts, toast, getToast } from '../src/hooks/useToast';
 import type { CelebrationEvent } from '../src/types/celebrations';
 
@@ -13,12 +13,12 @@ function goal(frequency: 'daily' | 'weekly' | 'monthly' = 'weekly'): Goal {
     settings: { ...DEFAULT_GOAL_SETTINGS, frequency, target: { type: 'hours', value: 1 } } };
 }
 
-test('legacy weekly awards do not become new celebrations when a period record is created', () => {
+test('legacy weekly awards celebrate only additional target multiples', () => {
   const date = new Date(2026, 9, 5);
   const before = { ...goal(), totalTimeSpent: 1,
     weeklyTrophies: [{ weekNumber: getWeek(date), year: getWeekYear(date), trophies: 1, weeklyTimeSpent: 1 }] };
   const after = { ...before, ...practiceTimeUpdates(before, date, 1, date) };
-  assert.deepEqual(newlyEarnedPeriods(before, after), []);
+  assert.equal(newlyEarnedPeriods(before, after).length, 1);
 });
 
 test('period identity handles daily, monthly, and weekly New Year boundaries', () => {
@@ -30,7 +30,7 @@ test('period identity handles daily, monthly, and weekly New Year boundaries', (
     before = after;
     const next = new Date(2027, 0, 1);
     const following = { ...before, ...practiceTimeUpdates(before, next, 1, next) };
-    assert.equal(newlyEarnedPeriods(before, following).length, frequency === 'weekly' ? 0 : 1);
+    assert.equal(newlyEarnedPeriods(before, following).length, 1);
   }
 });
 
@@ -86,4 +86,28 @@ test('toast dismissal invokes cleanup once and queued errors preserve an existin
   assert.equal(dismissed, 1);
   clearToasts();
   assert.equal(getToast('trophy'), undefined);
+});
+
+
+test('weekly five-hour targets earn each multiple and recover capped saved history', () => {
+  const date = new Date(2026, 9, 5);
+  const before = goal();
+  before.settings.target.value = 5;
+  const partial = { ...before, ...practiceTimeUpdates(before, date, 4, date) };
+  assert.equal(partial.trophies, 0);
+  const fifteen = { ...partial, ...practiceTimeUpdates(partial, date, 11, date) };
+  assert.equal(fifteen.weeklyTimeSpent, 15);
+  assert.equal(fifteen.trophies, 3);
+  assert.equal(fifteen.weeklyTrophies[0].trophies, 3);
+  assert.equal(newlyEarnedPeriods(partial, fifteen).length, 3);
+  const extra = { ...fifteen, ...practiceTimeUpdates(fifteen, date, 1, date) };
+  assert.equal(extra.trophies, 3);
+  assert.equal(newlyEarnedPeriods(fifteen, extra).length, 0);
+  assert.equal(Object.values(extra.activityDays!)[0].trophies, 3);
+  const capped = { ...fifteen, weeklyTrophies: fifteen.weeklyTrophies.map(w => ({ ...w, trophies: 1 })) };
+  assert.equal(normalizeProgress(capped, date).trophies, 3);
+  const next = new Date(2026, 9, 12);
+  const nextWeek = { ...extra, ...practiceTimeUpdates(extra, next, 5, next) };
+  assert.equal(nextWeek.weeklyTimeSpent, 5);
+  assert.equal(nextWeek.trophies, 4);
 });

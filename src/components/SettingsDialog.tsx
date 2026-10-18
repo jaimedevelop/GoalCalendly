@@ -223,7 +223,7 @@ export function SettingsDialog({ goal, onClose, onUpdate }: SettingsDialogProps)
             <input aria-label="Reminder time" type="time" value={settings.reminderTime || '18:00'}
               onChange={e => handleSettingsChange('reminderTime', e.target.value)} className="ml-2 border rounded p-2" />
           </label>
-          <p className="text-sm text-gray-600">Reminders appear once a day while this app is open, until your current target is reached. Browser notifications require permission. Hour targets earn one trophy per completed day, week, or month.</p>
+          <p className="text-sm text-gray-600">Reminders appear once a day while this app is open, until your current target is reached. Browser notifications require permission. Weekly hour targets earn one trophy for each full target completed. Daily and monthly targets earn one trophy per period.</p>
           {error && <p role="alert" className="text-red-600">{error}</p>}
           {/* Save button */}
           <div className="flex justify-end space-x-2 pt-4">

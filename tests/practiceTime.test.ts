@@ -53,17 +53,17 @@ function fresh(frequency: 'daily' | 'weekly' | 'monthly', value: number): Goal {
 function add(g: Goal, hours: number, date = now): Goal {
   return { ...g, ...practiceTimeUpdates(g, date, hours, date) };
 }
-test('five weekly hours earns exactly one trophy, even after ten hours and reload', () => {
+test('five weekly hours earns one trophy per multiple after reload', () => {
   let g = add(fresh('weekly', 5), 4.99);
   assert.equal(g.trophies, 0);
   g = add(g, 0.01);
   assert.equal(g.trophies, 1);
   g = add(g, 5);
-  assert.equal(normalizeProgress(g, now).trophies, 1);
+  assert.equal(normalizeProgress(g, now).trophies, 2);
   const next = new Date(2026, 9, 14);
   assert.equal(currentProgress(g, next), 0);
   assert.equal(normalizeProgress(g, next).weeklyTimeSpent, 0);
-  assert.equal(add(g, 5, next).trophies, 2);
+  assert.equal(add(g, 5, next).trophies, 3);
 });
 test('daily target accumulates sessions and awards once each day', () => {
   let g = add(fresh('daily', 1), 0.5);

@@ -1,6 +1,7 @@
 import { format, getWeek, getWeekYear, startOfWeek } from 'date-fns';
 import { Goal, LEVELS } from '../types';
 import { activityHistory } from './activityHistory';
+import { weeklyTrophyCount } from './trophies';
 
 export function periodKey(goal: Goal, date: Date): string {
   const frequency = goal.settings.frequency;
@@ -19,10 +20,9 @@ export function currentProgress(goal: Goal, now = new Date()): number {
 /** Never copy the previous week's cached total into a new week on reload. */
 export function normalizeProgress(goal: Goal, now = new Date()): Goal {
   const weeklyTrophies = (goal.weeklyTrophies || []).map(w => ({ ...w,
-    trophies: goal.progressPeriods ? w.trophies
-      : goal.settings.frequency === 'weekly' && goal.settings.target.type === 'hours'
-        ? Number(goal.settings.target.value > 0 && w.weeklyTimeSpent + 1e-9 >= goal.settings.target.value)
-        : Math.min(1, Math.max(0, w.trophies)),
+    trophies: goal.settings.frequency === 'weekly' && goal.settings.target.type === 'hours'
+      ? weeklyTrophyCount(goal, w.weeklyTimeSpent)
+      : w.trophies,
   }));
   return { ...goal, weeklyTrophies,
     weeklyTimeSpent: weeklyTrophies.find(w => w.weekNumber === getWeek(now) && w.year === getWeekYear(now))?.weeklyTimeSpent ?? 0,
@@ -30,7 +30,7 @@ export function normalizeProgress(goal: Goal, now = new Date()): Goal {
   };
 }
 
-/** One trophy per achieved calendar period, shared by manual and timed sessions. */
+/** Weekly hour goals earn a trophy for every full target completed. */
 export function practiceTimeUpdates(goal: Goal, date: Date, hours: number, now = new Date()): Partial<Goal> {
   if (!Number.isFinite(hours) || hours <= 0) return {};
   const normalized = normalizeProgress(goal, now);
@@ -44,9 +44,12 @@ export function practiceTimeUpdates(goal: Goal, date: Date, hours: number, now =
   const alreadyEarned = previousPeriod?.earned ?? (goal.settings.frequency === 'weekly' && (previousWeek?.trophies ?? 0) > 0);
   const target = goal.settings.target;
   const earned = alreadyEarned || (target.type === 'hours' && Number.isFinite(target.value) && target.value > 0 && periodHours + 1e-9 >= target.value);
+  const addedTrophies = goal.settings.frequency === 'weekly' && target.type === 'hours'
+    ? Math.max(0, weeklyTrophyCount(goal, periodHours) - (previousWeek?.trophies ?? 0))
+    : Number(earned && !alreadyEarned);
   const weeklyTrophies = [
     ...normalized.weeklyTrophies.filter(w => w.weekNumber !== weekNumber || w.year !== year),
-    { weekNumber, year, weeklyTimeSpent: weeklyHours, trophies: (previousWeek?.trophies ?? 0) + (earned && !alreadyEarned ? 1 : 0) },
+    { weekNumber, year, weeklyTimeSpent: weeklyHours, trophies: (previousWeek?.trophies ?? 0) + addedTrophies },
   ].sort((a, b) => a.year - b.year || a.weekNumber - b.weekNumber);
   const totalTimeSpent = goal.totalTimeSpent + hours;
   const day = format(date, 'yyyy-MM-dd');
@@ -62,7 +65,7 @@ export function practiceTimeUpdates(goal: Goal, date: Date, hours: number, now =
     totalTimeSpent,
     activityDays: { ...activityDays, [day]: {
       hours: Math.max(previousDay?.hours ?? 0, dailyPeriod?.hours ?? 0) + hours,
-      trophies: Math.max(previousDay?.trophies ?? 0, Number(dailyPeriod?.earned ?? false)) + Number(earned && !alreadyEarned),
+      trophies: Math.max(previousDay?.trophies ?? 0, Number(dailyPeriod?.earned ?? false)) + addedTrophies,
     } },
     weeklyTimeSpent: weeklyTrophies.find(w => w.weekNumber === getWeek(now) && w.year === getWeekYear(now))?.weeklyTimeSpent ?? 0,
     practiceDays: [...new Set([...(goal.practiceDays || []), format(date, 'yyyy-MM-dd')])].sort(),

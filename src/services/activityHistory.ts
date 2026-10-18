@@ -1,5 +1,6 @@
 import { endOfWeek, format, isValid, parseISO, startOfWeek } from 'date-fns';
 import type { Goal } from '../types';
+import { weeklyTrophyCount } from './trophies';
 
 /** Recover dated history only when a saved period has exactly one known practice day. */
 export function activityHistory(goal: Goal): NonNullable<Goal['activityDays']> {
@@ -26,7 +27,7 @@ export function activityHistory(goal: Goal): NonNullable<Goal['activityDays']> {
     const [day] = candidates;
     days[day] = {
       hours: Math.max(days[day]?.hours ?? 0, period.hours),
-      trophies: Math.max(days[day]?.trophies ?? 0, Number(period.earned)),
+      trophies: Math.max(days[day]?.trophies ?? 0, goal.settings.frequency === 'weekly' && goal.settings.target.type === 'hours' ? weeklyTrophyCount(goal, period.hours) : Number(period.earned)),
     };
   }
   return days;

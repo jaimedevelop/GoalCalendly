@@ -1,10 +1,20 @@
 import { getWeek, getWeekYear } from 'date-fns';
 import type { Goal } from '../types';
 import { normalizeProgress } from './practiceTime';
+import { weeklyTrophyCount } from './trophies';
 
 /** Match the calculation's legacy weekly fallback instead of replaying a loaded award. */
 export function newlyEarnedPeriods(before: Goal, after: Goal): string[] {
   const normalized = normalizeProgress(before);
+  if (before.settings.frequency === 'weekly' && before.settings.target.type === 'hours') {
+    return Object.entries(after.progressPeriods ?? {}).flatMap(([key, period]) => {
+      if (!key.startsWith('weekly:')) return [];
+      const date = new Date(`${key.slice(7)}T12:00:00`);
+      const previousHours = before.progressPeriods?.[key]?.hours ?? normalized.weeklyTrophies.find(week =>
+        week.weekNumber === getWeek(date) && week.year === getWeekYear(date))?.weeklyTimeSpent ?? 0;
+      return Array.from({ length: Math.max(0, weeklyTrophyCount(after, period.hours) - weeklyTrophyCount(before, previousHours)) }, () => key);
+    });
+  }
   return Object.entries(after.progressPeriods ?? {}).filter(([key, period]) => {
     if (!period.earned) return false;
     const previous = before.progressPeriods?.[key];
@@ -32,7 +42,7 @@ export function formatSessionDuration(durationMs: number): string {
 }
 
 export function periodDescription(keys: string[]): string {
-  if (keys.length > 1) return `${keys.length} goal periods completed`;
+  if (keys.length > 1) return `${keys.length} target multiples completed`;
   const frequency = keys[0]?.split(':')[0];
   return `${frequency ? frequency[0].toUpperCase() + frequency.slice(1) : 'Goal'} target reached`;
 }
