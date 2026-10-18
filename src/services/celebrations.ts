@@ -1,6 +1,6 @@
 import { getWeek, getWeekYear } from 'date-fns';
 import type { Goal } from '../types';
-import { normalizeProgress } from './practiceTime';
+import { hasEarnedPeriod, normalizeProgress } from './practiceTime';
 import { weeklyTrophyCount } from './trophies';
 
 /** Match the calculation's legacy weekly fallback instead of replaying a loaded award. */
@@ -16,13 +16,7 @@ export function newlyEarnedPeriods(before: Goal, after: Goal): string[] {
     });
   }
   return Object.entries(after.progressPeriods ?? {}).filter(([key, period]) => {
-    if (!period.earned) return false;
-    const previous = before.progressPeriods?.[key];
-    if (previous) return !previous.earned;
-    if (!key.startsWith('weekly:')) return true;
-    const date = new Date(`${key.slice(7)}T12:00:00`);
-    return !normalized.weeklyTrophies.some(week =>
-      week.weekNumber === getWeek(date) && week.year === getWeekYear(date) && week.trophies > 0);
+    return period.earned && !hasEarnedPeriod(before, key);
   }).map(([key]) => key);
 }
 

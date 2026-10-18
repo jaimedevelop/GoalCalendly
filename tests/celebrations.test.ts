@@ -34,6 +34,16 @@ test('period identity handles daily, monthly, and weekly New Year boundaries', (
   }
 });
 
+test('a daily trophy cannot suppress a newly earned weekly celebration after changing frequency', () => {
+  const date = new Date(2026, 9, 7);
+  const initial = goal('daily');
+  const daily = { ...initial, ...practiceTimeUpdates(initial, date, 1, date) };
+  const before = { ...daily, settings: { ...daily.settings, frequency: 'weekly' as const } };
+  const after = { ...before, ...practiceTimeUpdates(before, date, 1, date) };
+  assert.deepEqual(newlyEarnedPeriods(before, after), ['weekly:2026-10-04']);
+  assert.equal(after.trophies, 2);
+});
+
 test('recovery refuses a stale snapshot, even when its trophy flag is present', () => {
   const before = goal();
   const date = new Date(2026, 9, 5);

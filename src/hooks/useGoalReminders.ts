@@ -3,18 +3,25 @@ import { useStore } from '../store';
 import { toast } from './useToast';
 import { reminderDue, reminderKey, showReminderNotification } from '../services/reminders';
 import { normalizeProgress } from '../services/practiceTime';
+import { format } from 'date-fns';
 
 export function useGoalReminders(uid?: string) {
   useEffect(() => {
     if (!uid) return;
     const delivered = new Set<string>();
+    let lastDay: string | undefined;
     const check = () => {
       const state = useStore.getState();
       if (state.user?.uid !== uid) return;
       const now = new Date();
-      // Refresh cached weekly totals even if the app stays open across midnight.
+      const day = format(now, 'yyyy-MM-dd');
+      const changedDay = lastDay !== undefined && lastDay !== day;
+      lastDay = day;
+      // Refresh date-dependent labels and daily/monthly progress at midnight,
+      // even when the cached weekly hours have not changed.
       const normalized = state.goals.map(goal => normalizeProgress(goal, now));
-      if (normalized.some((goal, i) => goal.weeklyTimeSpent !== state.goals[i].weeklyTimeSpent)) state.setGoals(normalized);
+      if (changedDay || normalized.some((goal, i) => goal.weeklyTimeSpent !== state.goals[i].weeklyTimeSpent ||
+          goal.trophies !== state.goals[i].trophies)) state.setGoals(normalized);
       const due = state.goals.filter(goal => {
         if (state.activeTimers.some(t => t.goalId === goal.id) || !reminderDue(goal, now, null)) return false;
         const key = reminderKey(uid, goal, now);

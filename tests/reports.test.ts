@@ -112,3 +112,27 @@ test('weeks crossing New Year keep saved totals in the correct calendar week', (
   assert.equal(report.trophies, 1);
   assert.equal(buildReport([g], 'monthly', new Date(2027, 0, 1)).hours, 1);
 });
+
+test('reports recover dated monthly awards and combine distinct period awards in the same week', () => {
+  const g = { ...goal(), progressPeriods: {
+    'daily:2026-10-07': { hours: 2, earned: true },
+    'monthly:2026-10': { hours: 5, earned: true, earnedOn: '2026-10-07' },
+  } };
+  assert.equal(buildReport([g], 'daily', day).trophies, 2);
+  assert.equal(buildReport([g], 'weekly', day).trophies, 2);
+  assert.equal(buildReport([g], 'monthly', day).trophies, 2);
+});
+
+test('undated monthly history is included in its month and marked incomplete in narrower reports', () => {
+  const g = { ...goal(), progressPeriods: {
+    'daily:2026-10-07': { hours: 2, earned: true },
+    'monthly:2026-10': { hours: 5, earned: true },
+  } };
+  assert.equal(buildReport([g], 'monthly', day).trophies, 2);
+  assert.equal(buildReport([g], 'monthly', day).hours, 5);
+  for (const frequency of ['daily', 'weekly'] as const) {
+    const report = buildReport([g], frequency, day);
+    assert.equal(report.trophies, 1);
+    assert.equal(report.incomplete, true);
+  }
+});
