@@ -175,10 +175,10 @@ test('timer crossing Sunday at New Year awards week 53 and week 1 separately', a
   await h.store.getState().stopTimer('a');
   const g = h.store.getState().goals[0];
   assert.equal(g.totalTimeSpent, 2);
-  assert.equal(g.trophies, 2);
+  assert.equal(g.trophies, 4);
   assert.deepEqual(Array.from(g.weeklyTrophies, w => [w.year, w.weekNumber, w.weeklyTimeSpent, w.trophies]),
-    [[2022, 53, 1, 1], [2023, 1, 1, 1]]);
-  assert.equal(h.store.getState().celebrations[0].periodKeys.length, 2);
+    [[2022, 53, 1, 2], [2023, 1, 1, 2]]);
+  assert.equal(h.store.getState().celebrations[0].periodKeys.length, 4);
 });
 
 test('timer on the daylight-saving transition records elapsed time rather than wall-clock hours', async () => {
@@ -193,7 +193,7 @@ test('timer on the daylight-saving transition records elapsed time rather than w
   const g = h.store.getState().goals[0];
   assert.equal(g.totalTimeSpent, (end - start) / 3600000);
   assert.equal(g.weeklyTimeSpent, (end - start) / 3600000);
-  assert.equal(g.trophies, 1);
+  assert.equal(g.trophies, Math.floor((end - start) / 3600000));
 });
 
 test('an open app refreshes date-dependent progress at midnight even when weekly hours stay the same', () => {

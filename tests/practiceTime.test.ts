@@ -53,17 +53,17 @@ function fresh(frequency: 'daily' | 'weekly' | 'monthly', value: number): Goal {
 function add(g: Goal, hours: number, date = now): Goal {
   return { ...g, ...practiceTimeUpdates(g, date, hours, date) };
 }
-test('five weekly hours earns exactly one trophy, even after ten hours and reload', () => {
+test('five weekly hours earns one trophy per multiple after reload', () => {
   let g = add(fresh('weekly', 5), 4.99);
   assert.equal(g.trophies, 0);
   g = add(g, 0.01);
   assert.equal(g.trophies, 1);
   g = add(g, 5);
-  assert.equal(normalizeProgress(g, now).trophies, 1);
+  assert.equal(normalizeProgress(g, now).trophies, 2);
   const next = new Date(2026, 9, 14);
   assert.equal(currentProgress(g, next), 0);
   assert.equal(normalizeProgress(g, next).weeklyTimeSpent, 0);
-  assert.equal(add(g, 5, next).trophies, 2);
+  assert.equal(add(g, 5, next).trophies, 3);
 });
 test('daily target accumulates sessions and awards once each day', () => {
   let g = add(fresh('daily', 1), 0.5);
@@ -112,15 +112,15 @@ test('reminders respect time, opt-in, completion, active timer and achieved targ
   assert.notEqual(reminderKey('a', g, now), reminderKey('a', g, new Date(2026, 9, 8)));
 });
 
-test('loading legacy awards preserves them across target changes and does not invent awards', () => {
+test('loading preserves legacy awards and recovers weekly target multiples', () => {
   const legacy = { ...fresh('weekly', 10), trophies: 1,
     weeklyTrophies: [{ weekNumber: getWeek(now), year: getWeekYear(now), weeklyTimeSpent: 5, trophies: 1 }] };
   assert.equal(normalizeProgress(legacy, now).trophies, 1);
   assert.equal(add(legacy, 10).trophies, 1);
   const unearned = { ...legacy, trophies: 0, settings: { ...legacy.settings, target: { type: 'hours' as const, value: 2 } },
     weeklyTrophies: [{ ...legacy.weeklyTrophies[0], trophies: 0 }] };
-  assert.equal(normalizeProgress(unearned, now).trophies, 0, 'loading never applies the new target retroactively');
-  assert.equal(add(unearned, 0.5).trophies, 1);
+  assert.equal(normalizeProgress(unearned, now).trophies, 2, 'loading recovers full weekly target multiples');
+  assert.equal(add(unearned, 0.5).trophies, 2);
 });
 
 test('legacy daily counts and lifetime awards without dates survive reload and new practice', () => {
@@ -204,7 +204,7 @@ test('switching frequency back and forth retains period hours without re-awardin
   g = add(g, 1);
   assert.equal(g.trophies, 1);
   assert.equal(currentProgress(g, now), 5);
-  assert.equal(add(g, 5).trophies, 1);
+  assert.equal(add(g, 5).trophies, 2);
 });
 
 test('duplicate weekly snapshots do not duplicate trophies or lose the larger hour total', () => {
@@ -213,7 +213,7 @@ test('duplicate weekly snapshots do not duplicate trophies or lose the larger ho
   const loaded = normalizeProgress(g, now);
   assert.equal(loaded.weeklyTrophies.length, 1);
   assert.equal(loaded.weeklyTimeSpent, 3);
-  assert.equal(loaded.trophies, 1);
+  assert.equal(loaded.trophies, 3);
   assert.equal(add(loaded, 1).weeklyTimeSpent, 4);
 });
 

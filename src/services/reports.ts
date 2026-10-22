@@ -2,6 +2,7 @@ import { addDays, endOfDay, endOfMonth, endOfWeek, format, getWeek, getWeekYear,
 import type { Goal } from '../types';
 import { activityHistory } from './activityHistory';
 import { normalizeProgress } from './practiceTime';
+import { weeklyTrophyCount } from './trophies';
 
 export type ReportFrequency = 'daily' | 'weekly' | 'monthly';
 
@@ -31,7 +32,7 @@ export function buildReport(goals: Goal[], frequency: ReportFrequency, date: Dat
       const week = goal.weeklyTrophies?.find(w => w.weekNumber === getWeek(start) && w.year === getWeekYear(start));
       const period = goal.progressPeriods?.[`weekly:${first}`];
       hours = Math.max(hours, week?.weeklyTimeSpent ?? 0, period?.hours ?? 0);
-      trophies = Math.max(trophies, week?.trophies ?? 0, Number(period?.earned ?? false));
+      trophies = Math.max(trophies, week?.trophies ?? 0, (goal.settings.frequency === 'weekly' && goal.settings.target.type === 'hours' ? weeklyTrophyCount(goal, period?.hours ?? 0) : Number(period?.earned ?? false)));
     } else {
       // Weekly-only historical records cannot be split accurately across days/months.
       const checkedWeeks = new Set<string>();
@@ -43,7 +44,7 @@ export function buildReport(goals: Goal[], frequency: ReportFrequency, date: Dat
         const week = goal.weeklyTrophies?.find(w => w.weekNumber === getWeek(cursor) && w.year === getWeekYear(cursor));
         const period = goal.progressPeriods?.[`weekly:${key}`];
         const weeklyHours = Math.max(week?.weeklyTimeSpent ?? 0, period?.hours ?? 0);
-        const weeklyTrophies = Math.max(week?.trophies ?? 0, Number(period?.earned ?? false));
+        const weeklyTrophies = Math.max(week?.trophies ?? 0, (goal.settings.frequency === 'weekly' && goal.settings.target.type === 'hours' ? weeklyTrophyCount(goal, period?.hours ?? 0) : Number(period?.earned ?? false)));
         let datedHours = 0;
         let datedTrophies = 0;
         for (let day = weekStart; day <= endOfWeek(cursor); day = addDays(day, 1)) {
