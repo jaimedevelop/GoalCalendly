@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useStore, shouldShowAds } from '../store';
 import { LEVELS } from '../types';
 import { AdvertisingDisplay } from './AdvertisingDisplay';
@@ -89,7 +90,14 @@ export function NewGoalDialog({ onClose }: { onClose: () => void }) {
           )}
 
           {error && (
-            <p className="text-sm text-red-600" role="alert">{error}</p>
+            <div role="alert" className="space-y-2">
+              <p className="text-sm text-red-600">{error}</p>
+              {error.includes('Active goal limit reached') && (
+                <Link to="/subscription" onClick={onClose} className="inline-block text-sm font-medium text-blue-600 underline">
+                  View plans and account access
+                </Link>
+              )}
+            </div>
           )}
 
           <div className="flex justify-end space-x-2">

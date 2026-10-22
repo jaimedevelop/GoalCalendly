@@ -18,7 +18,7 @@ export function Header({ user, onSignOut }: HeaderProps) {
   // `subscriptionPlan` field, which only reflects billing state after a
   // sign-out/sign-in. Falls back to the profile field only while the
   // entitlement hasn't loaded yet, so the badge never goes blank.
-  const displayPlan = !isEntitlementLoading && entitlement ? entitlement.plan : user.subscriptionPlan;
+  const displayPlan = user.isTrustedAdmin ? 'enterprise' : !isEntitlementLoading && entitlement ? entitlement.plan : user.subscriptionPlan;
   const isPastDue = billingSummary?.status === 'past_due';
 
   return (
@@ -33,9 +33,10 @@ export function Header({ user, onSignOut }: HeaderProps) {
                 Admin
               </div>
             )}
-            <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium whitespace-nowrap">
+            <button type="button" onClick={() => navigate('/subscription')} title="View plans and account access" className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium whitespace-nowrap hover:bg-blue-200">
               {displayPlan.charAt(0).toUpperCase() + displayPlan.slice(1)}
-            </div>
+              <span>· Plans</span>
+            </button>
             {isPastDue && (
               <button
                 onClick={() => navigate('/subscription')}

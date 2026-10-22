@@ -24,7 +24,7 @@ const SubscriptionPlanComponent: React.FC<SubscriptionPlanProps> = ({ user, curr
   // fresh sign-in, so it's used purely as a loading-state fallback here
   // (admin_subscriptions.md section 7/8: labels must update without signing
   // out). Admins always effectively see 'enterprise'/unlimited regardless.
-  const displayPlan: SubscriptionPlan = !isEntitlementLoading && entitlement ? entitlement.plan : user.subscriptionPlan;
+  const displayPlan: SubscriptionPlan = isAdmin ? 'enterprise' : !isEntitlementLoading && entitlement ? entitlement.plan : user.subscriptionPlan;
   const currentPlan = SUBSCRIPTION_PLANS[displayPlan];
   const isAtLimit = !isAdmin && currentPlan.maxGoals !== -1 && currentGoalCount >= currentPlan.maxGoals;
 

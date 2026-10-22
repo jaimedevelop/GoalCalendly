@@ -103,7 +103,9 @@ export const mutateGoals = onCall(async (request) => {
     const willIncreaseCount = INCREASES_ACTIVE_COUNT.has(data.type);
     const incomingCount = data.goals?.length ?? 1;
 
-    if (willIncreaseCount) {
+    // The verified Auth claim takes precedence over a stale/missing plan
+    // projection, including immediately after an administrator is provisioned.
+    if (willIncreaseCount && request.auth?.token.admin !== true) {
       // Validate the WHOLE batch against the limit atomically — two
       // concurrent devices each importing goals cannot together exceed it,
       // because both transactions read the same usage doc and Firestore

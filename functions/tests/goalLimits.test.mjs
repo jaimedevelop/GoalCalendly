@@ -22,6 +22,9 @@ import {
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import fs from 'node:fs';
+import { initializeApp as initializeAdminApp } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
+import { signInWithCustomToken } from 'firebase/auth';
 
 const PROJECT_ID = 'demo-goalcalendly';
 
@@ -121,6 +124,29 @@ test('creating up to the limit succeeds, and the next create is rejected', async
     }
   );
   assert.equal(await getUsage(currentUid), 2);
+});
+
+test('trusted admin can create with a stale Free entitlement or no entitlement', async () => {
+  process.env.FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:9099';
+  const adminApp = initializeAdminApp({ projectId: PROJECT_ID }, 'goal-limit-admin-sdk');
+  const adminAuth = getAdminAuth(adminApp);
+  const adminUser = await adminAuth.createUser({});
+  await adminAuth.setCustomUserClaims(adminUser.uid, { admin: true });
+  const app = initializeApp({ projectId: PROJECT_ID, apiKey: 'fake' }, 'goal-limit-admin-client');
+  const auth = getAuth(app);
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  await signInWithCustomToken(auth, await adminAuth.createCustomToken(adminUser.uid));
+  const functions = getFunctions(app);
+  connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+  const mutate = httpsCallable(functions, 'mutateGoals');
+  await setUsage(adminUser.uid, 2);
+  await setEntitlement(adminUser.uid, 'free', 2);
+  await mutate({ requestId: 'admin-stale', type: 'create', goals: [newGoal()] });
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection('entitlements').doc(adminUser.uid).delete();
+  });
+  await mutate({ requestId: 'admin-missing', type: 'create', goals: [newGoal()] });
+  assert.equal(await getUsage(adminUser.uid), 4);
 });
 
 test('two concurrent creates from two devices cannot together exceed the limit', async () => {
