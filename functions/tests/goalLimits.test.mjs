@@ -131,11 +131,12 @@ test('trusted admin can create with a stale Free entitlement or no entitlement',
   const adminApp = initializeAdminApp({ projectId: PROJECT_ID }, 'goal-limit-admin-sdk');
   const adminAuth = getAdminAuth(adminApp);
   const adminUser = await adminAuth.createUser({});
-  await adminAuth.setCustomUserClaims(adminUser.uid, { admin: true });
   const app = initializeApp({ projectId: PROJECT_ID, apiKey: 'fake' }, 'goal-limit-admin-client');
   const auth = getAuth(app);
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   await signInWithCustomToken(auth, await adminAuth.createCustomToken(adminUser.uid));
+  // Keep the pre-grant token to reproduce an existing browser session.
+  await adminAuth.setCustomUserClaims(adminUser.uid, { admin: true });
   const functions = getFunctions(app);
   connectFunctionsEmulator(functions, '127.0.0.1', 5001);
   const mutate = httpsCallable(functions, 'mutateGoals');

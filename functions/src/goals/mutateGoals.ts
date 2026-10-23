@@ -14,7 +14,7 @@
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue } from 'firebase-admin/firestore';
-import { requireAuth, db } from '../lib/firebaseAdmin.js';
+import { requireAuth, db, auth } from '../lib/firebaseAdmin.js';
 import { isGoalActive, isUnderActiveGoalLimit } from '../../../shared/subscriptionPlans.js';
 import type { SubscriptionPlanId } from '../../../shared/subscriptionPlans.js';
 import type { EntitlementRecord } from '../lib/types.js';
@@ -80,6 +80,8 @@ export const mutateGoals = onCall(async (request) => {
   const usageRef = db.collection('usage').doc(uid);
   const entitlementRef = db.collection('entitlements').doc(uid);
   const goalsRef = db.collection('goals');
+  // Read current claims so older sessions see grants and revocations immediately.
+  const isTrustedAdmin = (await auth.getUser(uid)).customClaims?.admin === true;
 
   return db.runTransaction(async (tx) => {
     const [markerSnap, usageSnap, entitlementSnap] = await Promise.all([
@@ -105,7 +107,7 @@ export const mutateGoals = onCall(async (request) => {
 
     // The verified Auth claim takes precedence over a stale/missing plan
     // projection, including immediately after an administrator is provisioned.
-    if (willIncreaseCount && request.auth?.token.admin !== true) {
+    if (willIncreaseCount && !isTrustedAdmin) {
       // Validate the WHOLE batch against the limit atomically — two
       // concurrent devices each importing goals cannot together exceed it,
       // because both transactions read the same usage doc and Firestore
