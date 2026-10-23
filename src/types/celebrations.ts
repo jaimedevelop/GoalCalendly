@@ -9,6 +9,7 @@ export interface CelebrationEvent {
   kind: 'timer' | 'trophy' | 'error' | 'completed';
   durationMs: number;
   periodKeys: string[];
+  newPracticeDays?: string[];
   streakDays?: 3 | 5 | 7;
   saveState: 'saving' | 'saved' | 'empty' | 'failed';
   createdAt: number;

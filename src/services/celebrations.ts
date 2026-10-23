@@ -3,15 +3,20 @@ import type { Goal } from '../types';
 import { hasEarnedPeriod, normalizeProgress } from './practiceTime';
 import { weeklyTrophyCount } from './trophies';
 
-/** Calendar-day streaks require earned daily targets, not merely recorded activity. */
-export function earnedStreakMilestones(goal: Goal, newPeriodKeys: string[]) {
-  if (goal.settings.frequency !== 'daily') return [];
-  return newPeriodKeys.flatMap(key => {
-    if (!key.startsWith('daily:') || !goal.progressPeriods?.[key]?.earned) return [];
-    const date = parseISO(key.slice(6));
+/** Any recorded practice counts, regardless of target duration or frequency. */
+export function earnedStreakMilestones(goal: Goal, newDays: string[]) {
+  const active = new Set([...(goal.practiceDays ?? []), ...Object.entries(goal.activityDays ?? {}).filter(([, value]) => value.hours > 0).map(([day]) => day)]);
+  const added = new Set(newDays.map(day => day.replace(/^daily:/, '')));
+  return [...active].sort().flatMap(day => {
+    const date = parseISO(day);
     let days = 0;
-    while (goal.progressPeriods?.[`daily:${format(subDays(date, days), 'yyyy-MM-dd')}`]?.earned) days++;
-    return days === 3 || days === 5 || days === 7 ? [{ key, days: days as 3 | 5 | 7 }] : [];
+    let changed = false;
+    while (active.has(format(subDays(date, days), 'yyyy-MM-dd'))) {
+      changed ||= added.has(format(subDays(date, days), 'yyyy-MM-dd'));
+      days++;
+    }
+    return changed && (days === 3 || days === 5 || days === 7)
+      ? [{ key: day, days: days as 3 | 5 | 7 }] : [];
   });
 }
 

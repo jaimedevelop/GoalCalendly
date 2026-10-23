@@ -26,16 +26,12 @@ test('daily targets celebrate only 3, 5, and 7 consecutive earned calendar days'
   assert.deepEqual(results, [3, 5, 7]);
 });
 
-test('missed and incomplete daily targets break streaks across month boundaries', () => {
-  let before = goal('daily');
-  for (const [date, hours] of [[new Date(2026, 0, 30), 1], [new Date(2026, 0, 31), 1],
-    [new Date(2026, 1, 1), .5], [new Date(2026, 1, 2), 1], [new Date(2026, 1, 4), 1]] as const) {
-    const after = { ...before, ...practiceTimeUpdates(before, date, hours, date) };
-    assert.deepEqual(earnedStreakMilestones(after, newlyEarnedPeriods(before, after)), []);
-    before = after;
-  }
-  const weekly = { ...before, settings: { ...before.settings, frequency: 'weekly' as const } };
-  assert.deepEqual(earnedStreakMilestones(weekly, ['daily:2026-01-31']), []);
+test('short practice counts for weekly goals, including backfilled days', () => {
+  const value = { ...goal(), practiceDays: ['2026-10-20', '2026-10-21', '2026-10-22'] };
+  assert.deepEqual(earnedStreakMilestones(value, ['2026-10-22']).map(item => item.days), [3]);
+  assert.deepEqual(earnedStreakMilestones(value, ['2026-10-20']).map(item => item.days), [3]);
+  assert.deepEqual(earnedStreakMilestones(value, []), []);
+  assert.deepEqual(earnedStreakMilestones({ ...value, practiceDays: ['2026-10-20', '2026-10-22'] }, ['2026-10-22']), []);
 });
 
 test('legacy weekly awards celebrate only additional target multiples', () => {

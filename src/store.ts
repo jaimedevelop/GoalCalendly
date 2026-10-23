@@ -138,7 +138,10 @@ export const useStore = create<Store>((set, get) => ({
       } else if (index >= 0) celebrations[index] = confirmed;
       else if (periodKeys.length) celebrations.push(confirmed);
       if (!candidate.suppressed) {
-        for (const milestone of earnedStreakMilestones(snapshot, periodKeys)) {
+        for (const milestone of earnedStreakMilestones(snapshot, candidate.newPracticeDays ?? [])) {
+          const streakKey = `${candidate.goalId}:streak:${milestone.key}:${milestone.days}`;
+          if (celebratedPeriods.includes(streakKey)) continue;
+          celebratedPeriods.push(streakKey);
           celebrations.push({ ...confirmed, id: `${candidate.id}:streak:${milestone.key}`,
             kind: 'trophy', streakDays: milestone.days, dismissed: false, periodKeys: [] });
         }
@@ -336,6 +339,7 @@ export const useStore = create<Store>((set, get) => ({
     const event: CelebrationEvent = {
       id: `timer:${user?.uid ?? 'local'}:${goal.id}:${timer.startTime}`, userId: user?.uid ?? null,
       goalId: goal.id, goalName: goal.name, source: 'timer', kind: 'timer', durationMs,
+      newPracticeDays: (snapshot.practiceDays ?? []).filter(day => !(goal.practiceDays ?? []).includes(day)),
       periodKeys: newlyEarnedPeriods(goal, snapshot), saveState: durationMs ? 'saving' : 'empty',
       suppressed: options?.completion, createdAt: stoppedAt,
     };
@@ -376,7 +380,8 @@ export const useStore = create<Store>((set, get) => ({
       get().confirmProgressSaved(snapshot, {
         id: `manual:${++celebrationSequence}`, userId: get().user?.uid ?? null,
         goalId, goalName: goal.name, source: 'manual', kind: 'trophy', durationMs: minutes * 60000,
-        periodKeys: newlyEarnedPeriods(goal, snapshot), saveState: 'saved', createdAt: Date.now(),
+        newPracticeDays: (snapshot.practiceDays ?? []).filter(day => !(goal.practiceDays ?? []).includes(day)),
+      periodKeys: newlyEarnedPeriods(goal, snapshot), saveState: 'saved', createdAt: Date.now(),
       });
     }
     return ok;
