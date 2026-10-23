@@ -131,6 +131,25 @@ test('admin previews and real timer/manual outcomes share accessible, responsive
     const popup = page.locator('.celebration-popup');
     const screenshotDir = await mkdtemp(join(tmpdir(), 'goal-celebrations-'));
 
+    for (const [days, selector] of [[3, '.streak-dancer'], [5, '.streak-rocket'], [7, '.streak-confetti']]) {
+      await page.getByRole('button', { name: `Preview ${days}-day streak animation` }).click();
+      await popup.getByText(`${days}-day streak!`, { exact: true }).waitFor();
+      const art = popup.locator(selector).first();
+      assert.notEqual(await art.evaluate(element => getComputedStyle(element).animationName), 'none');
+      await popup.getByRole('button', { name: 'Replay animation', exact: true }).click();
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.getByLabel('Play full motion across the app').uncheck();
+      assert.equal(await art.evaluate(element => getComputedStyle(element).animationName), 'none');
+      await page.getByLabel('Play full motion across the app').check();
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await popup.locator('.celebration-art').evaluate(element => element.getAnimations({ subtree: true }).forEach(animation => { animation.pause(); animation.currentTime = 600; }));
+      await page.screenshot({ path: join(screenshotDir, `streak-${days}.png`) });
+      await popup.getByRole('button', { name: 'Close' }).click();
+      await popup.waitFor({ state: 'detached' });
+    }
+    assert.deepEqual(await page.evaluate(() => ({ goals: JSON.stringify(window.celebrationTest.getState().goals), writes: window.goalWrites })), before);
+    console.log(`Streak previews, replay, and reduced motion verified. Screenshots: ${screenshotDir}`);
+
     await page.getByRole('button', { name: 'Preview timer animation' }).click();
     await page.getByText('Timer stopped', { exact: true }).waitFor();
     assert.equal(await popup.count(), 1);

@@ -6,6 +6,23 @@ body {
   @apply antialiased text-gray-900;
 }
 
+.celebration-scene-streak .celebration-art-button { background: radial-gradient(ellipse at center, #ede9fe, #faf5ff 75%); }
+.streak-illustration { position: absolute; width: 220px; height: 190px; left: calc(50% - 110px); top: 0; }
+.streak-dancer { transform-origin: 110px 170px; animation: streak-dance 600ms ease-in-out 5; }
+.streak-arm-left { transform-origin: 89px 88px; animation: streak-wave 600ms ease-in-out 5; }
+.streak-arm-right { transform-origin: 132px 88px; animation: streak-wave 600ms 300ms ease-in-out 5; }
+.streak-rocket { animation: streak-launch 3400ms ease-in-out both; }
+.streak-exhaust { transform-origin: 110px 132px; animation: streak-flame 180ms ease-in-out 18 alternate; }
+.streak-seven { position: absolute; top: 24px; left: 0; right: 0; color: #7c3aed; font-size: 88px; font-weight: 900; line-height: 1.2; animation: streak-seven 650ms ease-out both; }
+.streak-seven span { display: block; font-size: 12px; letter-spacing: .18em; }
+.streak-confetti { position: absolute; left: 50%; top: 85px; width: 8px; height: 12px; border-radius: 2px; opacity: 0; animation: streak-confetti 2600ms var(--delay) ease-out both; }
+@keyframes streak-dance { 0%, 100% { transform: rotate(0); } 25% { transform: translateY(-9px) rotate(-9deg); } 75% { transform: translateY(-9px) rotate(9deg); } }
+@keyframes streak-wave { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(24deg); } }
+@keyframes streak-launch { 0% { transform: translateY(20px); } 20% { transform: translate(2px, 18px); } 55% { transform: translateY(-200px); } 56% { transform: translateY(180px); opacity: 0; } 75%, 100% { transform: translateY(0); opacity: 1; } }
+@keyframes streak-flame { to { transform: scaleY(.7); } }
+@keyframes streak-seven { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes streak-confetti { 0% { transform: translate(0, 0) scale(.3); opacity: 0; } 12% { opacity: 1; } 65% { opacity: 1; } 100% { transform: translate(var(--x), var(--y)) rotate(var(--turn)); opacity: 0; } }
+
 input {
   @apply border-gray-300 focus:border-blue-500 focus:ring-blue-500;
 }

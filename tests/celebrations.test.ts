@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getWeek, getWeekYear } from 'date-fns';
 import { DEFAULT_GOAL_SETTINGS, type Goal } from '../src/types';
-import { newlyEarnedPeriods, containsSessionProgress, formatSessionDuration } from '../src/services/celebrations';
+import { newlyEarnedPeriods, containsSessionProgress, earnedStreakMilestones, formatSessionDuration } from '../src/services/celebrations';
 import { normalizeProgress, practiceTimeUpdates } from '../src/services/practiceTime';
 import { reducer, clearToasts, toast, getToast } from '../src/hooks/useToast';
 import type { CelebrationEvent } from '../src/types/celebrations';
@@ -12,6 +12,31 @@ function goal(frequency: 'daily' | 'weekly' | 'monthly' = 'weekly'): Goal {
     totalTimeSpent: 0, weeklyTimeSpent: 0, weeklyGoal: 1, trophies: 0, practiceDays: [], medals: [], weeklyTrophies: [],
     settings: { ...DEFAULT_GOAL_SETTINGS, frequency, target: { type: 'hours', value: 1 } } };
 }
+
+test('daily targets celebrate only 3, 5, and 7 consecutive earned calendar days', () => {
+  let before = goal('daily');
+  const results: number[] = [];
+  for (let day = 1; day <= 8; day++) {
+    const date = new Date(2026, 0, day);
+    const after = { ...before, ...practiceTimeUpdates(before, date, 1, date) };
+    results.push(...earnedStreakMilestones(after, newlyEarnedPeriods(before, after)).map(item => item.days));
+    assert.deepEqual(earnedStreakMilestones(after, newlyEarnedPeriods(after, after)), []);
+    before = after;
+  }
+  assert.deepEqual(results, [3, 5, 7]);
+});
+
+test('missed and incomplete daily targets break streaks across month boundaries', () => {
+  let before = goal('daily');
+  for (const [date, hours] of [[new Date(2026, 0, 30), 1], [new Date(2026, 0, 31), 1],
+    [new Date(2026, 1, 1), .5], [new Date(2026, 1, 2), 1], [new Date(2026, 1, 4), 1]] as const) {
+    const after = { ...before, ...practiceTimeUpdates(before, date, hours, date) };
+    assert.deepEqual(earnedStreakMilestones(after, newlyEarnedPeriods(before, after)), []);
+    before = after;
+  }
+  const weekly = { ...before, settings: { ...before.settings, frequency: 'weekly' as const } };
+  assert.deepEqual(earnedStreakMilestones(weekly, ['daily:2026-01-31']), []);
+});
 
 test('legacy weekly awards celebrate only additional target multiples', () => {
   const date = new Date(2026, 9, 5);

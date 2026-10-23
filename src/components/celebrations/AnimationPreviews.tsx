@@ -11,6 +11,11 @@ export function AnimationPreviews() {
       <h2 id="animation-previews-title" className="text-lg font-semibold text-gray-900">Animation previews</h2>
       <p className="mt-1 text-sm text-gray-600">Test the timer and trophy popups with sample data. Your goals and recorded time stay unchanged.</p>
       <div className="mt-5 flex flex-wrap gap-3">
+        {([3, 5, 7] as const).map(days => <button key={days} type="button" onClick={() => preview(days)}
+          aria-label={`Preview ${days}-day streak animation`}
+          className="rounded-lg border border-violet-200 bg-violet-50 px-5 py-3 font-medium text-violet-800 hover:bg-violet-100">
+          {days} days · {days === 3 ? 'Celebration dance' : days === 5 ? 'Rocket launch' : 'Confetti burst'}
+        </button>)}
         <button type="button" onClick={() => preview('timer')} aria-label="Preview timer animation"
           className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-5 py-3 font-medium text-blue-700 hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
           <Timer className="h-5 w-5" aria-hidden="true" /> Timer

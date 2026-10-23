@@ -4,7 +4,7 @@ import { addDays, isValid, startOfDay } from 'date-fns';
 import { normalizeProgress, practiceTimeUpdates } from './services/practiceTime';
 import { AuthUser } from './services/auth.js';
 import { createGoal, updateGoalFields, completeGoal, deleteGoalRemote, saveGoalSnapshots } from './services/goals.js';
-import { containsSessionProgress, newlyEarnedPeriods } from './services/celebrations';
+import { containsSessionProgress, earnedStreakMilestones, newlyEarnedPeriods } from './services/celebrations';
 import type { CelebrationEvent, FailedSession } from './types/celebrations';
 
 interface Store {
@@ -14,7 +14,7 @@ interface Store {
   celebratedPeriods: string[];
   dismissCelebration: (id: string) => void;
   confirmProgressSaved: (snapshot: Goal, event?: CelebrationEvent) => void;
-  previewCelebration: (kind: 'timer' | 'trophy') => void;
+  previewCelebration: (kind: 'timer' | 'trophy' | 3 | 5 | 7) => void;
   fullCelebrationMotion: boolean;
   setFullCelebrationMotion: (enabled: boolean) => void;
   goals: Goal[];
@@ -137,6 +137,12 @@ export const useStore = create<Store>((set, get) => ({
         celebrations = celebrations.filter(item => item.id !== candidate.id);
       } else if (index >= 0) celebrations[index] = confirmed;
       else if (periodKeys.length) celebrations.push(confirmed);
+      if (!candidate.suppressed) {
+        for (const milestone of earnedStreakMilestones(snapshot, periodKeys)) {
+          celebrations.push({ ...confirmed, id: `${candidate.id}:streak:${milestone.key}`,
+            kind: 'trophy', streakDays: milestone.days, dismissed: false, periodKeys: [] });
+        }
+      }
     }
     return { celebrations, celebratedPeriods,
       failedSessions: state.failedSessions.filter(session => !recovered.includes(session)) };
@@ -146,7 +152,8 @@ export const useStore = create<Store>((set, get) => ({
     if (!user?.isTrustedAdmin) return;
     const event: CelebrationEvent = {
       id: `preview:${++celebrationSequence}`, userId: user.uid, goalId: 'preview', goalName: 'Focus session',
-      source: 'preview', kind, durationMs: 25 * 60000,
+      source: 'preview', kind: typeof kind === 'number' ? 'trophy' : kind,
+      ...(typeof kind === 'number' ? { streakDays: kind } : {}), durationMs: 25 * 60000,
       periodKeys: kind === 'trophy' ? ['weekly:preview'] : [], saveState: 'saved', createdAt: Date.now(),
     };
     set(state => ({ celebrations: [...state.celebrations.filter(item => item.source !== 'preview'), event] }));

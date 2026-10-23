@@ -1,7 +1,19 @@
-import { getWeek, getWeekYear } from 'date-fns';
+import { format, getWeek, getWeekYear, parseISO, subDays } from 'date-fns';
 import type { Goal } from '../types';
 import { hasEarnedPeriod, normalizeProgress } from './practiceTime';
 import { weeklyTrophyCount } from './trophies';
+
+/** Calendar-day streaks require earned daily targets, not merely recorded activity. */
+export function earnedStreakMilestones(goal: Goal, newPeriodKeys: string[]) {
+  if (goal.settings.frequency !== 'daily') return [];
+  return newPeriodKeys.flatMap(key => {
+    if (!key.startsWith('daily:') || !goal.progressPeriods?.[key]?.earned) return [];
+    const date = parseISO(key.slice(6));
+    let days = 0;
+    while (goal.progressPeriods?.[`daily:${format(subDays(date, days), 'yyyy-MM-dd')}`]?.earned) days++;
+    return days === 3 || days === 5 || days === 7 ? [{ key, days: days as 3 | 5 | 7 }] : [];
+  });
+}
 
 /** Match the calculation's legacy weekly fallback instead of replaying a loaded award. */
 export function newlyEarnedPeriods(before: Goal, after: Goal): string[] {
